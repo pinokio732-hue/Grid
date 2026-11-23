@@ -468,7 +468,4 @@ public class MainActivity extends Activity {
         map.put("Отмена", new String[]{"Cancel", "Abbrechen", "Atcelt"});
         map.put("Не удалось загрузить работы", new String[]{"Could not load jobs", "Arbeiten konnten nicht geladen werden", "Neizdevās ielādēt darbus"});
         return map;
-    }
-
-}
-```
+    
