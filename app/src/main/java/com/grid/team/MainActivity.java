@@ -5,7 +5,9 @@ import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.res.ColorStateList;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.PorterDuff;
+import android.widget.FrameLayout;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
@@ -33,8 +35,23 @@ public class MainActivity extends Activity {
     private SharedPreferences storage;
     private LinearLayout layout;
     private int editingIndex = -1;
-    private final int bg = Color.rgb(17, 25, 36);
-    private final int panel = Color.rgb(38, 65, 86);
+    private final int white = Color.WHITE;
+    private final int glassFill = Color.argb(100, 20, 40, 55);
+    private final int glassBorder = Color.argb(165, 255, 255, 255);
+
+    private int dp(float value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private GradientDrawable glassShape(int radius, boolean field) {
+        GradientDrawable shape = new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            field ? new int[]{Color.argb(150, 14, 31, 48), Color.argb(115, 30, 55, 72)}
+                  : new int[]{Color.argb(155, 255, 255, 255), Color.argb(92, 45, 75, 95), Color.argb(125, 13, 30, 47)});
+        shape.setCornerRadius(dp(radius));
+        shape.setStroke(dp(1), glassBorder);
+        return shape;
+    }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -48,36 +65,50 @@ public class MainActivity extends Activity {
         t.setText(value);
         t.setTextSize(size);
         t.setTextColor(Color.WHITE);
-        t.setPadding(12, 16, 12, 16);
+        t.setPadding(dp(12), dp(16), dp(12), dp(16));
+        t.setShadowLayer(dp(2), 0, dp(1), Color.argb(190, 0, 0, 0));
         return t;
     }
 
     private void page(String heading) {
+        FrameLayout root = new FrameLayout(this);
+        ImageView wallpaper = new ImageView(this);
+        wallpaper.setImageResource(R.drawable.grid_background);
+        wallpaper.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        wallpaper.setColorFilter(Color.argb(72, 0, 12, 25), PorterDuff.Mode.SRC_ATOP);
+        root.addView(wallpaper, new FrameLayout.LayoutParams(-1, -1));
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(bg);
+        scroll.setBackgroundColor(Color.TRANSPARENT);
         layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(24, 40, 24, 40);
+        layout.setPadding(dp(20), dp(35), dp(20), dp(35));
         TextView title = text(heading, 30);
         title.setTypeface(null, Typeface.BOLD);
         title.setGravity(Gravity.CENTER);
+        title.setShadowLayer(dp(4), 0, dp(2), Color.BLACK);
         layout.addView(title);
         scroll.addView(layout);
-        setContentView(scroll);
+        root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(root);
     }
 
     private void button(String label, Runnable action) {
         Button b = new Button(this);
         b.setText(label);
-        b.setTextColor(Color.WHITE);
+        b.setTextColor(white);
         b.setAllCaps(false);
         b.setTextSize(16);
-        b.setBackgroundTintList(ColorStateList.valueOf(panel));
+        b.setTypeface(null, Typeface.BOLD);
+        b.setGravity(Gravity.CENTER);
+        b.setBackground(glassShape(22, false));
+        b.setElevation(dp(5));
+        b.setPadding(dp(14), dp(12), dp(14), dp(12));
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
-        p.setMargins(0, 8, 0, 12);
+        p.setMargins(0, dp(7), 0, dp(9));
         layout.addView(b, p);
-        b.setMinHeight(96);
+        b.setMinHeight(dp(64));
         b.setOnClickListener(v -> action.run());
     }
 
@@ -117,8 +148,11 @@ public class MainActivity extends Activity {
         e.setTextColor(Color.WHITE);
         e.setText(value);
         e.setTextSize(17);
-        e.setPadding(12, 20, 12, 20);
-        layout.addView(e);
+        e.setPadding(dp(16), dp(15), dp(16), dp(15));
+        e.setBackground(glassShape(18, true));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.setMargins(0, dp(8), 0, dp(10));
+        layout.addView(e, params);
         return e;
     }
 
