@@ -14,6 +14,9 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
 import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -35,6 +38,7 @@ public class MainActivity extends Activity {
     private SharedPreferences storage;
     private LinearLayout layout;
     private int editingIndex = -1;
+    private int buttonCount = 0;
     private final int white = Color.WHITE;
     private final int glassFill = Color.argb(100, 20, 40, 55);
     private final int glassBorder = Color.argb(165, 255, 255, 255);
@@ -71,6 +75,7 @@ public class MainActivity extends Activity {
     }
 
     private void page(String heading) {
+        buttonCount = 0;
         FrameLayout root = new FrameLayout(this);
         ImageView wallpaper = new ImageView(this);
         wallpaper.setImageResource(R.drawable.grid_background);
@@ -92,6 +97,11 @@ public class MainActivity extends Activity {
         scroll.addView(layout);
         root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
+        // Soft fade and upward slide whenever a GRID page opens.
+        scroll.setAlpha(0f);
+        scroll.setTranslationY(dp(18));
+        scroll.animate().alpha(1f).translationY(0f)
+            .setDuration(320).setInterpolator(new DecelerateInterpolator()).start();
     }
 
     private void button(String label, Runnable action) {
@@ -109,7 +119,29 @@ public class MainActivity extends Activity {
         p.setMargins(0, dp(7), 0, dp(9));
         layout.addView(b, p);
         b.setMinHeight(dp(64));
+        // Glass buttons compress gently under the finger and spring back.
+        b.setOnTouchListener((view, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    view.animate().cancel();
+                    view.animate().scaleX(0.965f).scaleY(0.965f)
+                        .setDuration(110).setInterpolator(new DecelerateInterpolator()).start();
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    view.animate().cancel();
+                    view.animate().scaleX(1f).scaleY(1f)
+                        .setDuration(260).setInterpolator(new OvershootInterpolator(1.8f)).start();
+                    break;
+            }
+            return false; // Preserve Android's normal click and accessibility behavior.
+        });
         b.setOnClickListener(v -> action.run());
+        // Staggered entrance on each screen.
+        b.setAlpha(0f);
+        b.setTranslationY(dp(10));
+        b.animate().alpha(1f).translationY(0f).setStartDelay(Math.min(buttonCount++, 8) * 35L)
+            .setDuration(280).setInterpolator(new DecelerateInterpolator()).start();
     }
 
     private void showHome() {
