@@ -40,6 +40,8 @@ public class MainActivity extends Activity {
     private int editingIndex = -1;
     private int buttonCount = 0;
     private String selectedTurbine = null;
+    private Runnable backAction;
+    private Runnable jobsReturn;
     private String language = "ru";
     private final int white = Color.WHITE;
     private final int glassFill = Color.argb(100, 20, 40, 55);
@@ -72,12 +74,13 @@ public class MainActivity extends Activity {
         t.setText(value);
         t.setTextSize(size);
         t.setTextColor(Color.WHITE);
-        t.setPadding(dp(12), dp(16), dp(12), dp(16));
+        t.setPadding(dp(8), dp(6), dp(8), dp(6));
         t.setShadowLayer(dp(2), 0, dp(1), Color.argb(190, 0, 0, 0));
         return t;
     }
 
-    private void page(String heading) {
+    private void page(String heading, Runnable back) {
+        backAction = back;
         buttonCount = 0;
         FrameLayout root = new FrameLayout(this);
         ImageView wallpaper = new ImageView(this);
@@ -86,19 +89,37 @@ public class MainActivity extends Activity {
         wallpaper.setColorFilter(Color.argb(72, 0, 12, 25), PorterDuff.Mode.SRC_ATOP);
         root.addView(wallpaper, new FrameLayout.LayoutParams(-1, -1));
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.setBackgroundColor(Color.TRANSPARENT);
-        layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(dp(20), dp(35), dp(20), dp(35));
-        TextView title = text(heading, 30);
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setPadding(dp(12), dp(12), dp(12), 0);
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.setBackground(glassShape(16, true));
+        Button arrow = new Button(this);
+        arrow.setText("\u2190");
+        arrow.setTextSize(25);
+        arrow.setTextColor(white);
+        arrow.setPadding(0, 0, 0, 0);
+        arrow.setBackgroundColor(Color.TRANSPARENT);
+        arrow.setContentDescription(local("\u041d\u0430\u0437\u0430\u0434", "Back", "Zur\u00fcck", "Atpaka\u013c"));
+        arrow.setVisibility(back == null ? View.INVISIBLE : View.VISIBLE);
+        arrow.setOnClickListener(v -> onBackPressed());
+        toolbar.addView(arrow, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        TextView title = text(heading, 21);
         title.setTypeface(null, Typeface.BOLD);
         title.setGravity(Gravity.CENTER);
-        title.setShadowLayer(dp(4), 0, dp(2), Color.BLACK);
-        layout.addView(title);
+        title.setPadding(dp(4), dp(8), dp(4), dp(8));
+        toolbar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        toolbar.addView(new View(this), new LinearLayout.LayoutParams(dp(48), dp(48)));
+        shell.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(4), dp(8), dp(4), dp(16));
         scroll.addView(layout);
-        root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+        shell.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        root.addView(shell, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
         // Soft fade and upward slide whenever a GRID page opens.
         scroll.setAlpha(0f);
@@ -107,21 +128,26 @@ public class MainActivity extends Activity {
             .setDuration(320).setInterpolator(new DecelerateInterpolator()).start();
     }
 
+    @Override public void onBackPressed() {
+        if (backAction != null) backAction.run(); else super.onBackPressed();
+    }
+
     private void button(String label, Runnable action) {
         Button b = new Button(this);
         b.setText(label);
         b.setTextColor(white);
         b.setAllCaps(false);
-        b.setTextSize(16);
+        b.setTextSize(14);
         b.setTypeface(null, Typeface.BOLD);
         b.setGravity(Gravity.CENTER);
         b.setBackground(glassShape(22, false));
         b.setElevation(dp(5));
-        b.setPadding(dp(14), dp(12), dp(14), dp(12));
+        b.setPadding(dp(10), dp(6), dp(10), dp(6));
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
-        p.setMargins(0, dp(7), 0, dp(9));
+        p.setMargins(0, dp(3), 0, dp(4));
         layout.addView(b, p);
-        b.setMinHeight(dp(64));
+        b.setMinimumHeight(dp(48));
+        b.setMinHeight(dp(48));
         // Glass buttons compress gently under the finger and spring back.
         b.setOnTouchListener((view, event) -> {
             switch (event.getActionMasked()) {
@@ -148,8 +174,9 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
+        jobsReturn = this::showJobs;
         selectedTurbine = null;
-        page("GRID");
+        page("GRID", null);
         TextView sub = text("TEAM WORK MANAGEMENT", 15);
         sub.setGravity(Gravity.CENTER);
         layout.addView(sub);
@@ -177,15 +204,16 @@ public class MainActivity extends Activity {
         bar.setMax(Math.max(1, total));
         bar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xff22c55e));
         bar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff344550));
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(14));
-        p.setMargins(dp(8), 0, dp(8), dp(18));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(10));
+        p.setMargins(dp(8), 0, dp(8), dp(8));
         layout.addView(bar, p);
         android.animation.ObjectAnimator.ofInt(bar, "progress", 0, done).setDuration(500).start();
     }
 
     private void showTurbines() {
+        jobsReturn = this::showJobs;
         selectedTurbine = null;
-        page(local("\u0422\u0423\u0420\u0411\u0418\u041d\u042b", "TURBINES", "TURBINEN", "TURB\u012aNAS"));
+        page(local("\u0422\u0423\u0420\u0411\u0418\u041d\u042b", "TURBINES", "TURBINEN", "TURB\u012aNAS"), this::showHome);
         java.util.Map<String, int[]> counts = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (JSONObject job : jobs) {
             String name = job.optString("turbine").trim();
@@ -202,12 +230,12 @@ public class MainActivity extends Activity {
             progress(c[1], c[0]);
         }
         button(local("+ \u0428\u0430\u0431\u043b\u043e\u043d \u0440\u0430\u0431\u043e\u0442", "+ Job template", "+ Arbeitsvorlage", "+ Darbu veidne"), this::importTemplate);
-        button(local("\u2190 \u0413\u043b\u0430\u0432\u043d\u043e\u0435 \u043c\u0435\u043d\u044e", "\u2190 Home", "\u2190 Hauptmen\u00fc", "\u2190 Galven\u0101 izv\u0113lne"), this::showHome);
     }
 
     private void showTurbineJobs(String name) {
+        jobsReturn = () -> showTurbineJobs(name);
         selectedTurbine = name;
-        page(name);
+        page(name, this::showTurbines);
         java.util.Map<String, ArrayList<Integer>> groups = new java.util.LinkedHashMap<>();
         int total = 0, done = 0;
         for (int i = 0; i < jobs.size(); i++) {
@@ -225,28 +253,36 @@ public class MainActivity extends Activity {
         progress(done, total);
         button(tr("+ \u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0440\u0430\u0431\u043e\u0442\u0443"), () -> editJob(-1));
         button(tr("\u0424\u041e\u0422\u041e\u0413\u0420\u0410\u0424\u0418\u0418"), () -> showGallery());
-        button(local("\u2190 \u0422\u0443\u0440\u0431\u0438\u043d\u044b", "\u2190 Turbines", "\u2190 Turbinen", "\u2190 Turb\u012bnas"), this::showTurbines);
         for (java.util.Map.Entry<String, ArrayList<Integer>> entry : groups.entrySet()) {
             int completed = 0;
             for (int i : entry.getValue()) if (jobs.get(i).optBoolean("done")) completed++;
             final String group = entry.getKey();
             final ArrayList<Integer> indices = entry.getValue();
-            button(group + " (" + completed + "/" + indices.size() + ")", () -> {
-                page(group);
-                button(local("\u2190 \u041d\u0430\u0437\u0430\u0434", "\u2190 Back", "\u2190 Zur\u00fcck", "\u2190 Atpaka\u013c"), () -> showTurbineJobs(name));
-                for (int i : indices) {
-                    final int index = i;
-                    JSONObject j = jobs.get(i);
-                    button((j.optBoolean("done") ? "\u2713 " : "\u25cb ") + j.optString("name"), () -> jobOptions(index));
-                }
-            });
+            button(group + " (" + completed + "/" + indices.size() + ")", () -> showCategory(name, group));
             progress(completed, indices.size());
         }
     }
 
+    private void showCategory(String name, String group) {
+        selectedTurbine = name;
+        jobsReturn = () -> showCategory(name, group);
+        page(group, () -> showTurbineJobs(name));
+        for (int i = 0; i < jobs.size(); i++) {
+            JSONObject j = jobs.get(i);
+            if (!name.equalsIgnoreCase(j.optString("turbine").trim())) continue;
+            String title = j.optString("name");
+            int split = title.indexOf(" \u2014 ");
+            String category = split < 0 ? local("\u0414\u0440\u0443\u0433\u0438\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", "Other jobs", "Andere Arbeiten", "Citi darbi") : title.substring(0, split);
+            if (!group.equals(category)) continue;
+            final int index = i;
+            button((j.optBoolean("done") ? "\u2713 " : "\u25cb ") + (split < 0 ? title : title.substring(split + 3)), () -> jobOptions(index));
+        }
+    }
+
     private void showJobs() {
+        jobsReturn = this::showJobs;
         if (selectedTurbine != null) { showTurbineJobs(selectedTurbine); return; }
-        page(tr("\u0420\u0410\u0411\u041e\u0422\u042b GRID"));
+        page(tr("\u0420\u0410\u0411\u041e\u0422\u042b GRID"), this::showHome);
         button(tr("+ \u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0440\u0430\u0431\u043e\u0442\u0443"), () -> editJob(-1));
         if (jobs.isEmpty()) layout.addView(text(tr("\u041f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0440\u0430\u0431\u043e\u0442. \u0414\u043e\u0431\u0430\u0432\u044c \u043f\u0435\u0440\u0432\u0443\u044e!"), 17));
         for (int i = 0; i < jobs.size(); i++) {
@@ -257,7 +293,6 @@ public class MainActivity extends Activity {
                     + j.optString("date") + "\n" + status + tr(" \u2022 \u0424\u043e\u0442\u043e: ") + photos(j).length();
             button(info, () -> jobOptions(index));
         }
-        button(tr("\u2190 \u0413\u043b\u0430\u0432\u043d\u043e\u0435 \u043c\u0435\u043d\u044e"), this::showHome);
     }
 
     private EditText field(String hint, String value) {
@@ -276,12 +311,13 @@ public class MainActivity extends Activity {
     }
 
     private void editJob(int index) {
+        Runnable returnToJobs = jobsReturn != null ? jobsReturn : this::showJobs;
         editingIndex = index;
         JSONObject old = index >= 0 ? jobs.get(index) : new JSONObject();
         draftPhotos.clear();
         JSONArray saved = photos(old);
         for (int i = 0; i < saved.length(); i++) draftPhotos.add(saved.optString(i));
-        page(index >= 0 ? tr("\u0420\u0415\u0414\u0410\u041a\u0422\u0418\u0420\u041e\u0412\u0410\u0422\u042c") : tr("\u041d\u041e\u0412\u0410\u042f \u0420\u0410\u0411\u041e\u0422\u0410"));
+        page(index >= 0 ? tr("\u0420\u0415\u0414\u0410\u041a\u0422\u0418\u0420\u041e\u0412\u0410\u0422\u042c") : tr("\u041d\u041e\u0412\u0410\u042f \u0420\u0410\u0411\u041e\u0422\u0410"), returnToJobs);
         EditText turbine = field(tr("\u041d\u043e\u043c\u0435\u0440 \u0438\u043b\u0438 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0442\u0443\u0440\u0431\u0438\u043d\u044b"), old.optString("turbine", selectedTurbine == null ? "" : selectedTurbine));
         EditText name = field(tr("\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0440\u0430\u0431\u043e\u0442\u044b"), old.optString("name"));
         EditText date = field(tr("\u0414\u0430\u0442\u0430 \u0440\u0430\u0431\u043e\u0442\u044b"), old.optString("date"));
@@ -330,10 +366,10 @@ public class MainActivity extends Activity {
                 j.put("photos", array);
                 if (index >= 0) jobs.set(index, j); else jobs.add(j);
                 saveJobs();
-                showJobs();
+                returnToJobs.run();
             } catch (Exception e) { message(tr("\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u044f")); }
         });
-        button(tr("\u041e\u0422\u041c\u0415\u041d\u0410"), this::showJobs);
+        button(tr("\u041e\u0422\u041c\u0415\u041d\u0410"), returnToJobs);
     }
 
     private void pickPhotos() {
@@ -378,7 +414,7 @@ public class MainActivity extends Activity {
     }
 
     private void showGallery() {
-        page(tr("\u0424\u041e\u0422\u041e\u0413\u0420\u0410\u0424\u0418\u0418 GRID"));
+        page(tr("\u0424\u041e\u0422\u041e\u0413\u0420\u0410\u0424\u0418\u0418 GRID"), () -> { if (selectedTurbine != null) showTurbineJobs(selectedTurbine); else showHome(); });
         int count = 0;
         for (int i = 0; i < jobs.size(); i++) {
             JSONObject j = jobs.get(i);
@@ -394,7 +430,6 @@ public class MainActivity extends Activity {
             }
         }
         if (count == 0) layout.addView(text(tr("\u0424\u043e\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u0439 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442. \u0414\u043e\u0431\u0430\u0432\u044c \u0438\u0445 \u043a \u0440\u0430\u0431\u043e\u0442\u0435."), 17));
-        button(tr("\u2190 \u0413\u043b\u0430\u0432\u043d\u043e\u0435 \u043c\u0435\u043d\u044e"), () -> { if (selectedTurbine != null) showTurbineJobs(selectedTurbine); else showHome(); });
     }
 
     private void addThumbnail(String uri) {
@@ -420,6 +455,7 @@ public class MainActivity extends Activity {
     }
 
     private void jobOptions(int index) {
+        Runnable returnToJobs = jobsReturn != null ? jobsReturn : this::showJobs;
         JSONObject j = jobs.get(index);
         String[] options = {tr("\u041f\u043e\u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c \u043e\u043f\u0438\u0441\u0430\u043d\u0438\u0435"), tr("\u0424\u043e\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u0438 \u0440\u0430\u0431\u043e\u0442\u044b"), tr("\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c"),
             j.optBoolean("done") ? tr("\u0412\u0435\u0440\u043d\u0443\u0442\u044c \u0432 \u0440\u0430\u0431\u043e\u0442\u0443") : tr("\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u043e\u0439"), tr("\u0423\u0434\u0430\u043b\u0438\u0442\u044c")};
@@ -430,22 +466,21 @@ public class MainActivity extends Activity {
                         .setMessage(j.optString("description", ""))
                         .setPositiveButton("OK", null).show();
                 } else if (which == 1) {
-                    page(tr("\u0424\u041e\u0422\u041e \u0420\u0410\u0411\u041e\u0422\u042b"));
+                    page(tr("\u0424\u041e\u0422\u041e \u0420\u0410\u0411\u041e\u0422\u042b"), returnToJobs);
                     JSONArray a = photos(j);
                     if (a.length() == 0) layout.addView(text(tr("\u0424\u043e\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u0439 \u043d\u0435\u0442"), 17));
                     for (int i = 0; i < a.length(); i++) addThumbnail(a.optString(i));
-                    button(tr("\u2190 \u0420\u0430\u0431\u043e\u0442\u044b"), this::showJobs);
                 } else if (which == 2) editJob(index);
                 else if (which == 3) {
                     try {
                         j.put("done", !j.optBoolean("done"));
-                        saveJobs(); showJobs();
+                        saveJobs(); returnToJobs.run();
                     } catch (Exception e) { message(tr("\u041e\u0448\u0438\u0431\u043a\u0430")); }
                 } else {
                     new AlertDialog.Builder(this).setMessage(tr("\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u044d\u0442\u0443 \u0440\u0430\u0431\u043e\u0442\u0443?"))
                         .setNegativeButton(tr("\u041e\u0442\u043c\u0435\u043d\u0430"), null)
                         .setPositiveButton(tr("\u0423\u0434\u0430\u043b\u0438\u0442\u044c"), (d, w) -> {
-                            jobs.remove(index); saveJobs(); showJobs();
+                            jobs.remove(index); saveJobs(); returnToJobs.run();
                         }).show();
                 }
             }).show();
