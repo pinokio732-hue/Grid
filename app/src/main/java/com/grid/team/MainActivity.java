@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
     private LinearLayout layout;
     private int editingIndex = -1;
     private int buttonCount = 0;
+    private String selectedTurbine = null;
     private String language = "ru";
     private final int white = Color.WHITE;
     private final int glassFill = Color.argb(100, 20, 40, 55);
@@ -147,11 +148,12 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
+        selectedTurbine = null;
         page("GRID");
         TextView sub = text("TEAM WORK MANAGEMENT", 15);
         sub.setGravity(Gravity.CENTER);
         layout.addView(sub);
-        button(tr("\u0422\u0423\u0420\u0411\u0418\u041d\u042b"), this::showJobs);
+        button(tr("\u0422\u0423\u0420\u0411\u0418\u041d\u042b"), this::showTurbines);
         button(tr("\u0420\u0410\u0411\u041e\u0422\u042b"), this::showJobs);
         button(tr("\u0414\u041e\u0411\u0410\u0412\u0418\u0422\u042c \u0420\u0410\u0411\u041e\u0422\u0423"), () -> editJob(-1));
         button(tr("\u041a\u0410\u041b\u0415\u041d\u0414\u0410\u0420\u042c"), this::showJobs);
@@ -162,7 +164,88 @@ public class MainActivity extends Activity {
         button(tr("\u042f\u0417\u042b\u041a / LANGUAGE"), this::chooseLanguage);
     }
 
+    private String local(String ru, String en, String de, String lv) {
+        return "en".equals(language) ? en : "de".equals(language) ? de : "lv".equals(language) ? lv : ru;
+    }
+
+    private void progress(int done, int total) {
+        int percent = total == 0 ? 0 : (int)(100L * done / total);
+        TextView label = text(local("\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e", "Completed", "Erledigt", "Pabeigts") + ": " + done + " / " + total + "  \u2022  " + percent + "%", 17);
+        label.setTextColor(0xff75ef98);
+        layout.addView(label);
+        android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(Math.max(1, total));
+        bar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xff22c55e));
+        bar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff344550));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(14));
+        p.setMargins(dp(8), 0, dp(8), dp(18));
+        layout.addView(bar, p);
+        android.animation.ObjectAnimator.ofInt(bar, "progress", 0, done).setDuration(500).start();
+    }
+
+    private void showTurbines() {
+        selectedTurbine = null;
+        page(local("\u0422\u0423\u0420\u0411\u0418\u041d\u042b", "TURBINES", "TURBINEN", "TURB\u012aNAS"));
+        java.util.Map<String, int[]> counts = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (JSONObject job : jobs) {
+            String name = job.optString("turbine").trim();
+            int[] c = counts.get(name);
+            if (c == null) { c = new int[2]; counts.put(name, c); }
+            c[0]++;
+            if (job.optBoolean("done")) c[1]++;
+        }
+        if (counts.isEmpty()) layout.addView(text(local("\u041f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0442\u0443\u0440\u0431\u0438\u043d", "No turbines yet", "Noch keine Turbinen", "V\u0113l nav turb\u012bnu"), 17));
+        for (java.util.Map.Entry<String, int[]> entry : counts.entrySet()) {
+            final String name = entry.getKey();
+            int[] c = entry.getValue();
+            button(name, () -> showTurbineJobs(name));
+            progress(c[1], c[0]);
+        }
+        button(local("+ \u0428\u0430\u0431\u043b\u043e\u043d \u0440\u0430\u0431\u043e\u0442", "+ Job template", "+ Arbeitsvorlage", "+ Darbu veidne"), this::importTemplate);
+        button(local("\u2190 \u0413\u043b\u0430\u0432\u043d\u043e\u0435 \u043c\u0435\u043d\u044e", "\u2190 Home", "\u2190 Hauptmen\u00fc", "\u2190 Galven\u0101 izv\u0113lne"), this::showHome);
+    }
+
+    private void showTurbineJobs(String name) {
+        selectedTurbine = name;
+        page(name);
+        java.util.Map<String, ArrayList<Integer>> groups = new java.util.LinkedHashMap<>();
+        int total = 0, done = 0;
+        for (int i = 0; i < jobs.size(); i++) {
+            JSONObject j = jobs.get(i);
+            if (!name.equalsIgnoreCase(j.optString("turbine").trim())) continue;
+            total++;
+            if (j.optBoolean("done")) done++;
+            String title = j.optString("name");
+            int split = title.indexOf(" \u2014 ");
+            String group = split < 0 ? local("\u0414\u0440\u0443\u0433\u0438\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", "Other jobs", "Andere Arbeiten", "Citi darbi") : title.substring(0, split);
+            ArrayList<Integer> indices = groups.get(group);
+            if (indices == null) { indices = new ArrayList<>(); groups.put(group, indices); }
+            indices.add(i);
+        }
+        progress(done, total);
+        button(tr("+ \u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0440\u0430\u0431\u043e\u0442\u0443"), () -> editJob(-1));
+        button(tr("\u0424\u041e\u0422\u041e\u0413\u0420\u0410\u0424\u0418\u0418"), () -> showGallery());
+        button(local("\u2190 \u0422\u0443\u0440\u0431\u0438\u043d\u044b", "\u2190 Turbines", "\u2190 Turbinen", "\u2190 Turb\u012bnas"), this::showTurbines);
+        for (java.util.Map.Entry<String, ArrayList<Integer>> entry : groups.entrySet()) {
+            int completed = 0;
+            for (int i : entry.getValue()) if (jobs.get(i).optBoolean("done")) completed++;
+            final String group = entry.getKey();
+            final ArrayList<Integer> indices = entry.getValue();
+            button(group + " (" + completed + "/" + indices.size() + ")", () -> {
+                page(group);
+                button(local("\u2190 \u041d\u0430\u0437\u0430\u0434", "\u2190 Back", "\u2190 Zur\u00fcck", "\u2190 Atpaka\u013c"), () -> showTurbineJobs(name));
+                for (int i : indices) {
+                    final int index = i;
+                    JSONObject j = jobs.get(i);
+                    button((j.optBoolean("done") ? "\u2713 " : "\u25cb ") + j.optString("name"), () -> jobOptions(index));
+                }
+            });
+            progress(completed, indices.size());
+        }
+    }
+
     private void showJobs() {
+        if (selectedTurbine != null) { showTurbineJobs(selectedTurbine); return; }
         page(tr("\u0420\u0410\u0411\u041e\u0422\u042b GRID"));
         button(tr("+ \u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0440\u0430\u0431\u043e\u0442\u0443"), () -> editJob(-1));
         if (jobs.isEmpty()) layout.addView(text(tr("\u041f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0440\u0430\u0431\u043e\u0442. \u0414\u043e\u0431\u0430\u0432\u044c \u043f\u0435\u0440\u0432\u0443\u044e!"), 17));
@@ -199,7 +282,7 @@ public class MainActivity extends Activity {
         JSONArray saved = photos(old);
         for (int i = 0; i < saved.length(); i++) draftPhotos.add(saved.optString(i));
         page(index >= 0 ? tr("\u0420\u0415\u0414\u0410\u041a\u0422\u0418\u0420\u041e\u0412\u0410\u0422\u042c") : tr("\u041d\u041e\u0412\u0410\u042f \u0420\u0410\u0411\u041e\u0422\u0410"));
-        EditText turbine = field(tr("\u041d\u043e\u043c\u0435\u0440 \u0438\u043b\u0438 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0442\u0443\u0440\u0431\u0438\u043d\u044b"), old.optString("turbine"));
+        EditText turbine = field(tr("\u041d\u043e\u043c\u0435\u0440 \u0438\u043b\u0438 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0442\u0443\u0440\u0431\u0438\u043d\u044b"), old.optString("turbine", selectedTurbine == null ? "" : selectedTurbine));
         EditText name = field(tr("\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0440\u0430\u0431\u043e\u0442\u044b"), old.optString("name"));
         EditText date = field(tr("\u0414\u0430\u0442\u0430 \u0440\u0430\u0431\u043e\u0442\u044b"), old.optString("date"));
         date.setFocusable(false);
@@ -299,6 +382,7 @@ public class MainActivity extends Activity {
         int count = 0;
         for (int i = 0; i < jobs.size(); i++) {
             JSONObject j = jobs.get(i);
+            if (selectedTurbine != null && !selectedTurbine.equalsIgnoreCase(j.optString("turbine").trim())) continue;
             JSONArray arr = photos(j);
             if (arr.length() == 0) continue;
             layout.addView(text(j.optString("turbine") + tr(" \u2014 ") + j.optString("name"), 19));
@@ -310,7 +394,7 @@ public class MainActivity extends Activity {
             }
         }
         if (count == 0) layout.addView(text(tr("\u0424\u043e\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u0439 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442. \u0414\u043e\u0431\u0430\u0432\u044c \u0438\u0445 \u043a \u0440\u0430\u0431\u043e\u0442\u0435."), 17));
-        button(tr("\u2190 \u0413\u043b\u0430\u0432\u043d\u043e\u0435 \u043c\u0435\u043d\u044e"), this::showHome);
+        button(tr("\u2190 \u0413\u043b\u0430\u0432\u043d\u043e\u0435 \u043c\u0435\u043d\u044e"), () -> { if (selectedTurbine != null) showTurbineJobs(selectedTurbine); else showHome(); });
     }
 
     private void addThumbnail(String uri) {
@@ -635,7 +719,7 @@ public class MainActivity extends Activity {
             jobs.addAll(added);
             saveJobs();
             dialog.dismiss();
-            showJobs();
+            showTurbines();
         }));
         dialog.show();
     }
