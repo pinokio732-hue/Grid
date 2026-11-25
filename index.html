@@ -215,5 +215,27 @@ home();
 weather();
 setInterval(weather,600000);
 </script>
+  
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
+  import { getAuth } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
+  import { getFirestore } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCKUc3-52tQW8LC_plL07UYDqOoR4kkw0Q",
+    authDomain: "grid-30080.firebaseapp.com",
+    projectId: "grid-30080",
+    storageBucket: "grid-30080.firebasestorage.app",
+    messagingSenderId: "1071203220625",
+    appId: "1:1071203220625:web:1fe3328d166829f9919330"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  console.log("GRID Firebase initialized");
+</script>
+
 </body>
 </html>
