@@ -69,172 +69,36 @@ GRID
 
 <main id="screen"></main>
 
-<script>
-const screen=document.getElementById('screen');
-let jobs=JSON.parse(localStorage.getItem('gridJobs')||'[]');
-let lang=localStorage.getItem('gridLang')||'ru';
-
-const words={
-ru:['ТУРБИНЫ','РАБОТЫ','ДОБАВИТЬ РАБОТУ','ПРОБЛЕМЫ NC','ЯЗЫК','НАЗАД','СОХРАНИТЬ','Турбина','Название работы','Описание','ВЫПОЛНЕНО','УДАЛИТЬ','РЕДАКТИРОВАТЬ','ПОИСК'],
-en:['TURBINES','JOBS','ADD JOB','NC ISSUES','LANGUAGE','BACK','SAVE','Turbine','Job name','Description','COMPLETED','DELETE','EDIT','SEARCH'],
-de:['TURBINEN','ARBEITEN','ARBEIT HINZUFÜGEN','NC-PROBLEME','SPRACHE','ZURÜCK','SPEICHERN','Turbine','Arbeitsname','Beschreibung','ERLEDIGT','LÖSCHEN','BEARBEITEN','SUCHE'],
-lv:['TURBĪNAS','DARBI','PIEVIENOT DARBU','NC PROBLĒMAS','VALODA','ATPAKAĻ','SAGLABĀT','Turbīna','Darba nosaukums','Apraksts','PABEIGTS','DZĒST','LABOT','MEKLĒT']
-};
-
-function t(i){return words[lang][i]}
-function save(){
-localStorage.setItem('gridJobs',JSON.stringify(jobs))
-}
-function clear(){
-screen.replaceChildren()
-}
-function text(s){
-let p=document.createElement('p');
-p.textContent=s;
-screen.append(p)
-}
-function btn(s,fn,cls=''){
-let b=document.createElement('button');
-b.textContent=s;
-b.className=cls;
-b.onclick=fn;
-screen.append(b)
-}
-function back(){btn('← '+t(5),home)}
-function home(){
-clear();
-text('TEAM WORK MANAGEMENT');
-btn(t(0),turbines);
-btn(t(1),()=>list());
-btn(t(13),search);
-btn(t(2),()=>edit(-1));
-text(t(10)+': '+jobs.filter(j=>j.done&&!j.nc).length+' / '+jobs.length);
-btn(t(3)+' ('+jobs.filter(j=>j.nc).length+')',()=>list(null,true),'nc');
-btn(t(4),languages);
-text('GRID TEAM · iPhone & Android')
-}
-function turbines(){
-clear();back();
-[...new Set(jobs.map(j=>j.turbine))].forEach(n=>{
-let a=jobs.filter(j=>j.turbine===n);
-btn(n+' ('+a.filter(j=>j.done&&!j.nc).length+'/'+a.length+')',()=>list(n))
-})
-}
-function list(n=null,nc=false,q=''){
-clear();back();
-jobs.forEach((j,i)=>{
-if(n!==null&&j.turbine!==n)return;
-if(nc&&!j.nc)return;
-if(q&&!(j.turbine+' '+j.name+' '+j.description).toLowerCase().includes(q.toLowerCase()))return;
-btn((j.done?'✓ ':'○ ')+j.turbine+' — '+j.name+(j.nc?' · NC: '+j.nc:''),()=>details(i),j.nc?'nc':j.done?'done':'')
-});
-btn('+ '+t(2),()=>edit(-1,n||''))
-}
-function field(h,v,type='text'){
-let e=document.createElement('input');
-e.type=type;e.placeholder=h;e.value=v||'';
-screen.append(e);return e
-}
-function edit(i,n=''){
-clear();back();
-let j=jobs[i]||{};
-let a=field(t(7),j.turbine||n);
-let b=field(t(8),j.name);
-let c=field('',j.date||new Date().toISOString().slice(0,10),'date');
-let d=document.createElement('textarea');
-d.placeholder=t(9);
-d.value=j.description||'';
-screen.append(d);
-btn(t(6),()=>{
-if(!a.value.trim()||!b.value.trim())return;
-let item={...j,turbine:a.value.trim(),name:b.value.trim(),date:c.value,description:d.value,done:j.done||false,updatedAt:new Date().toISOString()};
-if(i<0)jobs.push(item);
-else jobs[i]=item;
-save();list()
-})
-}
-function details(i){
-clear();back();
-let j=jobs[i];
-text(j.turbine+' — '+j.name);
-text(j.description||'');
-text(j.date||'');
-if(j.completedAt)text(new Date(j.completedAt).toLocaleString());
-if(j.nc)text('NC: '+j.nc);
-btn((j.done?'✓ ':'')+t(10),()=>{
-j.done=!j.done;
-if(j.done){j.nc='';j.completedAt=new Date().toISOString()}
-else delete j.completedAt;
-save();details(i)
-},'done');
-btn('NC',()=>{
-let n=prompt('NC',j.nc||'');
-if(n===null)return;
-j.nc=n;
-if(n){j.done=false;delete j.completedAt}
-save();details(i)
-},'nc');
-btn(t(12),()=>edit(i));
-btn(t(11),()=>{
-if(confirm(t(11)+'?')){
-jobs.splice(i,1);save();list()
-}
-})
-}
-function search(){
-clear();back();
-let q=field(t(13),'');
-btn(t(13),()=>list(null,false,q.value))
-}
-function languages(){
-clear();back();
-[['ru','Русский'],['en','English'],['de','Deutsch'],['lv','Latviešu']].forEach(([l,n])=>{
-btn(n,()=>{
-lang=l;localStorage.setItem('gridLang',l);
-document.documentElement.lang=l;home()
-})
-})
-}
-function weather(){
-let w=document.getElementById('weather');
-if(!navigator.geolocation)return;
-navigator.geolocation.getCurrentPosition(async p=>{
-try{
-let a=p.coords.latitude.toFixed(3);
-let b=p.coords.longitude.toFixed(3);
-let url='https://api.open-meteo.com/v1/forecast?latitude='+a+'&longitude='+b+'&current=temperature_2m,wind_speed_10m,wind_gusts_10m&wind_speed_unit=ms';
-let r=await fetch(url);
-if(!r.ok)throw Error();
-let d=(await r.json()).current;
-w.innerText=d.temperature_2m+' °C\n'+d.wind_speed_10m+' / '+d.wind_gusts_10m+' m/s';
-}catch(e){w.innerText='-- °C\n-- m/s'}
-},()=>{w.innerText='GPS —'}, {timeout:15000})
-}
-document.documentElement.lang=lang;
-home();
-weather();
-setInterval(weather,600000);
-</script>
-  
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
-  import { getAuth } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
-  import { getFirestore } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyCKUc3-52tQW8LC_plL07UYDqOoR4kkw0Q",
-    authDomain: "grid-30080.firebaseapp.com",
-    projectId: "grid-30080",
-    storageBucket: "grid-30080.firebasestorage.app",
-    messagingSenderId: "1071203220625",
-    appId: "1:1071203220625:web:1fe3328d166829f9919330"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-
-  console.log("GRID Firebase initialized");
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js';
+import {getAuth,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js';
+import {getFirestore,collection,doc,setDoc,updateDoc,onSnapshot,serverTimestamp} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
+const firebaseConfig={apiKey:'AIzaSyCKUc3-52tQW8LC_plL07UYDqOoR4kkw0Q',authDomain:'grid-30080.firebaseapp.com',projectId:'grid-30080',storageBucket:'grid-30080.firebasestorage.app',messagingSenderId:'1071203220625',appId:'1:1071203220625:web:1fe3328d166829f9919330'};
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
+const screen=document.getElementById('screen');
+let jobs=[],user=null,unsubscribe=null,ready=false,view=()=>home(),lang=localStorage.getItem('gridLang')||'ru';
+const words={ru:['ТУРБИНЫ','РАБОТЫ','ДОБАВИТЬ РАБОТУ','ПРОБЛЕМЫ NC','ЯЗЫК','НАЗАД','СОХРАНИТЬ','Турбина','Название работы','Описание','ВЫПОЛНЕНО','УДАЛИТЬ','РЕДАКТИРОВАТЬ','ПОИСК'],en:['TURBINES','JOBS','ADD JOB','NC ISSUES','LANGUAGE','BACK','SAVE','Turbine','Job name','Description','COMPLETED','DELETE','EDIT','SEARCH'],de:['TURBINEN','ARBEITEN','ARBEIT HINZUFÜGEN','NC-PROBLEME','SPRACHE','ZURÜCK','SPEICHERN','Turbine','Arbeitsname','Beschreibung','ERLEDIGT','LÖSCHEN','BEARBEITEN','SUCHE'],lv:['TURBĪNAS','DARBI','PIEVIENOT DARBU','NC PROBLĒMAS','VALODA','ATPAKAĻ','SAGLABĀT','Turbīna','Darba nosaukums','Apraksts','PABEIGTS','DZĒST','LABOT','MEKLĒT']};
+const t=i=>words[lang][i],clear=()=>screen.replaceChildren();
+function text(s){const p=document.createElement('p');p.textContent=s;screen.append(p);return p}
+function btn(s,fn,cls=''){const b=document.createElement('button');b.textContent=s;b.className=cls;b.onclick=fn;screen.append(b);return b}
+function field(h,v,type='text'){const e=document.createElement('input');e.type=type;e.placeholder=h;e.value=v||'';screen.append(e);return e}
+function back(){btn('← '+t(5),home)}
+function show(fn){view=fn;fn()}
+function fail(e){console.error(e);alert('Firebase: '+(e.code||e.message||e))}
+async function login(){try{await signInWithPopup(auth,new GoogleAuthProvider())}catch(e){if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment'].includes(e.code))try{await signInWithRedirect(auth,new GoogleAuthProvider())}catch(err){fail(err)}else if(e.code!=='auth/popup-closed-by-user')fail(e)}}
+function signedOut(){clear();text('GRID TEAM');text('Войдите через Google. Доступ к заданиям разрешён только участникам, добавленным администратором в Firestore /members.');btn('Войти через Google',login);text('Ваши старые задания на этом устройстве пока не удалены.')}
+function home(){clear();text('TEAM WORK MANAGEMENT');text(user?.email||'');btn(t(0),()=>show(turbines));btn(t(1),()=>show(()=>list()));btn(t(13),()=>show(search));btn(t(2),()=>show(()=>edit(null)));text(t(10)+': '+jobs.filter(j=>j.done&&!j.nc).length+' / '+jobs.length);btn(t(3)+' ('+jobs.filter(j=>j.nc).length+')',()=>show(()=>list(null,true)),'nc');btn(t(4),()=>show(languages));btn('Импорт старых работ с этого устройства',importLocal);btn('Выйти',()=>signOut(auth));text('GRID TEAM · Firebase · iPhone & Android')}
+function turbines(){clear();back();[...new Set(jobs.map(j=>j.turbine))].forEach(n=>{const a=jobs.filter(j=>j.turbine===n);btn(n+' ('+a.filter(j=>j.done&&!j.nc).length+'/'+a.length+')',()=>show(()=>list(n)))})}
+function list(n=null,nc=false,q=''){clear();back();jobs.forEach(j=>{if(n!==null&&j.turbine!==n)return;if(nc&&!j.nc)return;if(q&&!(j.turbine+' '+j.name+' '+(j.description||'')).toLowerCase().includes(q.toLowerCase()))return;btn((j.done?'✓ ':'○ ')+j.turbine+' — '+j.name+(j.nc?' · NC: '+j.nc:''),()=>show(()=>details(j.id)),j.nc?'nc':j.done?'done':'')});btn('+ '+t(2),()=>show(()=>edit(null,n||'')))}
+function edit(id,n=''){clear();back();const j=jobs.find(x=>x.id===id)||{};const a=field(t(7),j.turbine||n),b=field(t(8),j.name),c=field('Дата',j.date||new Date().toISOString().slice(0,10),'date'),d=document.createElement('textarea');d.placeholder=t(9);d.value=j.description||'';screen.append(d);const worker=field('Исполнитель (1–3 буквы)',j.worker||'');btn(t(6),async()=>{if(!a.value.trim()||!b.value.trim()){alert('Заполни турбину и название');return}if(worker.value.trim().length>3){alert('Исполнитель: максимум 3 буквы');return}const ref=id?doc(db,'tasks',id):doc(collection(db,'tasks'));const item={turbine:a.value.trim(),name:b.value.trim(),date:c.value,description:d.value,worker:worker.value.trim(),done:!!j.done,nc:j.nc||'',completedAt:j.completedAt||'',updatedAt:new Date().toISOString(),updatedBy:user.uid};try{await setDoc(ref,item,{merge:true});show(()=>list())}catch(e){fail(e)}})}
+function details(id){const j=jobs.find(x=>x.id===id);if(!j){show(()=>list());return}clear();back();text(j.turbine+' — '+j.name);text(j.description||'');text('Дата: '+(j.date||'')+' · '+(j.worker||''));if(j.completedAt)text('Выполнено: '+new Date(j.completedAt).toLocaleString());if(j.nc)text('NC: '+j.nc);btn((j.done?'✓ ':'')+t(10),async()=>{const done=!j.done;try{await updateDoc(doc(db,'tasks',id),{done,nc:done?'':j.nc||'',completedAt:done?new Date().toISOString():'',updatedAt:new Date().toISOString(),updatedBy:user.uid})}catch(e){fail(e)}},'done');btn('NC',async()=>{const n=prompt('NC',j.nc||'');if(n===null)return;try{await updateDoc(doc(db,'tasks',id),{nc:n,done:n?false:!!j.done,completedAt:n?'':j.completedAt||'',updatedAt:new Date().toISOString(),updatedBy:user.uid})}catch(e){fail(e)}},'nc');btn(t(12),()=>show(()=>edit(id)));text('Удаление отключено правилами безопасности Firestore.')}
+function search(){clear();back();const q=field(t(13),'');btn(t(13),()=>show(()=>list(null,false,q.value)))}
+function languages(){clear();back();[['ru','Русский'],['en','English'],['de','Deutsch'],['lv','Latviešu']].forEach(([l,n])=>btn(n,()=>{lang=l;localStorage.setItem('gridLang',l);document.documentElement.lang=l;show(home)}))}
+async function importLocal(){let old=[];try{old=JSON.parse(localStorage.getItem('gridJobs')||'[]')}catch(e){alert('Ошибка чтения старых работ');return}if(!Array.isArray(old)||!old.length){alert('На этом устройстве нет старых работ');return}if(!confirm('Импортировать '+old.length+' старых работ? Существующие задания в облаке останутся. Повторный импорт создаст дубликаты.'))return;let count=0;try{for(const j of old){const ref=doc(collection(db,'tasks'));await setDoc(ref,{turbine:String(j.turbine||''),name:String(j.name||''),description:String(j.description||''),date:String(j.date||''),worker:String(j.worker||''),done:!!j.done,nc:String(j.nc||''),completedAt:String(j.completedAt||''),updatedAt:new Date().toISOString(),updatedBy:user.uid});count++}alert('Импортировано: '+count+'. Локальная копия сохранена.')}catch(e){alert('Импортировано '+count+' из '+old.length);fail(e)}}
+function weather(){const w=document.getElementById('weather');if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(async p=>{try{const a=p.coords.latitude.toFixed(3),b=p.coords.longitude.toFixed(3);const url='https://api.open-meteo.com/v1/forecast?latitude='+a+'&longitude='+b+'&current=temperature_2m,wind_speed_10m,wind_gusts_10m&wind_speed_unit=ms';const r=await fetch(url);if(!r.ok)throw Error();const d=(await r.json()).current;w.innerText=d.temperature_2m+' °C\n'+d.wind_speed_10m+' / '+d.wind_gusts_10m+' m/s'}catch(e){w.innerText='-- °C\n-- m/s'}},()=>{w.innerText='GPS —'},{timeout:15000})}
+getRedirectResult(auth).catch(fail);
+onAuthStateChanged(auth,u=>{if(unsubscribe){unsubscribe();unsubscribe=null}user=u;ready=false;if(!u){signedOut();return}clear();text('Подключение к Firestore…');unsubscribe=onSnapshot(collection(db,'tasks'),snapshot=>{jobs=snapshot.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.turbine||'').localeCompare(b.turbine||'')||(a.name||'').localeCompare(b.name||''));ready=true;show(view)},e=>{clear();text('Нет доступа к заданиям. Проверь, что UID этого Google-аккаунта добавлен в /members.');text('UID: '+u.uid);text('Ошибка: '+e.message);btn('Выйти',()=>signOut(auth))})});
+document.documentElement.lang=lang;signedOut();weather();setInterval(weather,600000);
 </script>
 
 </body>
