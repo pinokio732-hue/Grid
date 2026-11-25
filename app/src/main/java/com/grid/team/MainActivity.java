@@ -1386,5 +1386,40 @@ public class MainActivity extends Activity {
         map.put("\u0414\u043b\u044f \u044d\u0442\u043e\u0439 \u0442\u0443\u0440\u0431\u0438\u043d\u044b \u0443\u0436\u0435 \u0435\u0441\u0442\u044c \u0440\u0430\u0431\u043e\u0442\u044b", new String[]{"Jobs already exist for this turbine", "F\u00fcr diese Turbine gibt es bereits Aufgaben", "\u0160ai turb\u012bnai jau ir darbi"});
         return map;
     }
+    private void showSearch(String query, int unused) {
+        final EditText search = new EditText(this);
+        search.setSingleLine(true);
+        search.setHint("Поиск работы");
 
+        new AlertDialog.Builder(this)
+            .setTitle("Поиск")
+            .setView(search)
+            .setPositiveButton("Найти", (dialog, which) -> {
+                String text = search.getText().toString().trim();
+                if (text.isEmpty()) {
+                    showHome();
+                    return;
+                }
+
+                String needle = text.toLowerCase(java.util.Locale.ROOT);
+                java.util.ArrayList<String> results =
+                    new java.util.ArrayList<>();
+
+                for (JSONObject job : jobs) {
+                    if (job.toString().toLowerCase(
+                            java.util.Locale.ROOT).contains(needle)) {
+                        results.add(job.optString("name", "Работа"));
+                    }
+                }
+
+                new AlertDialog.Builder(this)
+                    .setTitle("Результаты поиска")
+                    .setItems(results.toArray(new String[0]),
+                        (d, selected) -> showJobs())
+                    .setPositiveButton("OK", null)
+                    .show();
+            })
+            .setNegativeButton("Отмена", null)
+            .show();
+    }
 }
