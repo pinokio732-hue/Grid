@@ -276,6 +276,14 @@ public class MainActivity extends Activity {
         }
     }
 
+    private String completionInfo(JSONObject j) {
+        if (!j.optBoolean("done")) return "";
+        long time = j.optLong("completedAt", 0);
+        if (time <= 0) return "\n" + local("\u0414\u0430\u0442\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430", "Completion date unknown", "Abschlussdatum unbekannt", "Pabeig\u0161anas datums nav zin\u0101ms");
+        String stamp = new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.ROOT).format(new java.util.Date(time));
+        return "\n" + local("\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e: ", "Completed: ", "Abgeschlossen: ", "Pabeigts: ") + stamp;
+    }
+
     private void showCategory(String name, String group) {
         selectedTurbine = name;
         jobsReturn = () -> showCategory(name, group);
@@ -288,7 +296,7 @@ public class MainActivity extends Activity {
             String category = split < 0 ? local("\u0414\u0440\u0443\u0433\u0438\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", "Other jobs", "Andere Arbeiten", "Citi darbi") : title.substring(0, split);
             if (!group.equals(category)) continue;
             final int index = i;
-            button((j.optBoolean("done") ? "\u2713 " : "\u25cb ") + (split < 0 ? title : title.substring(split + 3)), () -> jobOptions(index), j.optBoolean("done"));
+            button((j.optBoolean("done") ? "\u2713 " : "\u25cb ") + (split < 0 ? title : title.substring(split + 3)) + completionInfo(j), () -> jobOptions(index), j.optBoolean("done"));
         }
     }
 
@@ -303,7 +311,7 @@ public class MainActivity extends Activity {
             JSONObject j = jobs.get(i);
             String status = j.optBoolean("done") ? tr("\u2713 \u0412\u042b\u041f\u041e\u041b\u041d\u0415\u041d\u041e") : tr("\u25cb \u0412 \u0420\u0410\u0411\u041e\u0422\u0415");
             String info = j.optString("turbine") + "\n" + j.optString("name") + "\n"
-                    + j.optString("date") + "\n" + status + tr(" \u2022 \u0424\u043e\u0442\u043e: ") + photos(j).length();
+                    + j.optString("date") + "\n" + status + tr(" \u2022 \u0424\u043e\u0442\u043e: ") + photos(j).length() + completionInfo(j);
             button(info, () -> jobOptions(index), j.optBoolean("done"));
         }
     }
@@ -374,6 +382,7 @@ public class MainActivity extends Activity {
                 j.put("date", date.getText().toString());
                 j.put("description", description.getText().toString());
                 j.put("done", old.optBoolean("done", false));
+                if (old.optBoolean("done") && old.optLong("completedAt", 0) > 0) j.put("completedAt", old.optLong("completedAt"));
                 JSONArray array = new JSONArray();
                 for (String uri : draftPhotos) array.put(uri);
                 j.put("photos", array);
@@ -476,7 +485,7 @@ public class MainActivity extends Activity {
             .setItems(options, (dialog, which) -> {
                 if (which == 0) {
                     new AlertDialog.Builder(this).setTitle(tr("\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435"))
-                        .setMessage(j.optString("description", ""))
+                        .setMessage(j.optString("description", "") + completionInfo(j))
                         .setPositiveButton("OK", null).show();
                 } else if (which == 1) {
                     page(tr("\u0424\u041e\u0422\u041e \u0420\u0410\u0411\u041e\u0422\u042b"), returnToJobs);
@@ -486,7 +495,10 @@ public class MainActivity extends Activity {
                 } else if (which == 2) editJob(index);
                 else if (which == 3) {
                     try {
-                        j.put("done", !j.optBoolean("done"));
+                        boolean completed = !j.optBoolean("done");
+                        j.put("done", completed);
+                        if (completed) j.put("completedAt", System.currentTimeMillis());
+                        else j.remove("completedAt");
                         saveJobs(); returnToJobs.run();
                     } catch (Exception e) { message(tr("\u041e\u0448\u0438\u0431\u043a\u0430")); }
                 } else {
@@ -540,10 +552,11 @@ public class MainActivity extends Activity {
             if (l == null) {
                 JSONObject n = new JSONObject();
                 for (String k : new String[]{"turbine","name","date","description"}) n.put(k,r.optString(k));
-                n.put("done",r.optBoolean("done")); n.put("photos",new JSONArray()); next.add(n); index.put(jobKey(n),n);
+                n.put("done",r.optBoolean("done")); if (n.optBoolean("done") && r.optLong("completedAt",0)>0) n.put("completedAt",r.optLong("completedAt")); n.put("photos",new JSONArray()); next.add(n); index.put(jobKey(n),n);
             } else {
                 boolean different = l.optBoolean("done") != r.optBoolean("done") || !l.optString("date").equals(r.optString("date")) || !l.optString("description").equals(r.optString("description"));
-                if (different) conflicts++;
+                if (different || (l.optBoolean("done") && r.optBoolean("done") && l.optLong("completedAt",0)>0 && r.optLong("completedAt",0)>0 && l.optLong("completedAt",0)!=r.optLong("completedAt",0))) conflicts++;
+                else if (l.optBoolean("done") && l.optLong("completedAt",0)<=0 && r.optLong("completedAt",0)>0) l.put("completedAt",r.optLong("completedAt"));
             }
         }
         if (!storage.edit().putString("sync_backup",backup.toString()).putString("sync_incoming",incoming.toString()).putString("jobs",new JSONArray(next).toString()).commit()) throw new java.io.IOException("Save failed");
