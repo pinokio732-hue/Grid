@@ -4,67 +4,216 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#17354a">
 <title>GRID TEAM</title>
 <style>
-body {
-  margin: 0;
-  padding: 25px 15px;
-  min-height: 100vh;
-  box-sizing: border-box;
-  font-family: Arial, sans-serif;
-  color: white;
-  text-align: center;
-  background: linear-gradient(145deg,#17354a,#091923);
+*{box-sizing:border-box}
+body{
+margin:0;padding:16px;
+min-height:100vh;
+font-family:Arial,sans-serif;
+color:white;
+background:linear-gradient(#10253699,#091923dd),
+url('grid_background.jpg') center/cover fixed;
+background-color:#17354a;
 }
-h1 {
-  font-size: 34px;
+header{
+display:flex;align-items:center;
+justify-content:space-between;
+padding:12px;border-radius:18px;
+background:#102536aa;
 }
-.rotor {
-  display: inline-block;
-  animation: spin 3s linear infinite;
+h1{margin:0;font-size:28px}
+.rotor{
+display:inline-block;
+animation:spin 3s linear infinite;
 }
-@keyframes spin {
-  to { transform: rotate(360deg); }
+@keyframes spin{
+to{transform:rotate(360deg)}
 }
-button {
-  display: block;
-  width: 100%;
-  padding: 17px;
-  margin: 10px 0;
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
-  border: 1px solid #ffffff80;
-  border-radius: 22px;
-  background: linear-gradient(145deg,#ffffff40,#ffffff10);
+button,input,textarea,select{
+width:100%;padding:15px;
+margin:5px 0;border-radius:18px;
+border:1px solid #ffffff88;
+font-size:16px;color:white;
+background:#17354acc;
 }
-button:active {
-  transform: scale(.97);
+button{
+font-weight:bold;
+background:linear-gradient(145deg,#ffffff40,#17354aaa);
 }
+button:active{transform:scale(.97)}
+option{background:#17354a}
+.done{background:#287b49}
+.nc{background:#913b3b}
+.panel{
+padding:12px;margin:10px 0;
+border:1px solid #ffffff55;
+border-radius:18px;
+background:#102536bb;
+}
+#weather{font-size:12px;text-align:right}
+p{text-align:center}
 </style>
 </head>
 <body>
-<h1>
-<span class="rotor">✳</span>
+
+<header>
+<h1><span class="rotor">✳</span>
 GRID
-<span class="rotor">✳</span>
-</h1>
-<p>TEAM WORK MANAGEMENT</p>
+<span class="rotor">✳</span></h1>
+<div id="weather" onclick="weather()">
+-- °C<br>-- m/s
+</div>
+</header>
 
-<button>ТУРБИНЫ</button>
-<button>РАБОТЫ</button>
-<button>ПОИСК</button>
-<button>ДОБАВИТЬ РАБОТУ</button>
-<button>ПРОБЛЕМЫ NC</button>
-<button>КАЛЕНДАРЬ</button>
-<button>ФОТОГРАФИИ</button>
-<button>КОМАНДА</button>
-<button>СИНХРОНИЗАЦИЯ</button>
-<button>ШАБЛОН РАБОТ</button>
-<button>ЯЗЫК / LANGUAGE</button>
+<main id="screen"></main>
 
-<p>GRID TEAM · iPhone & Android</p>
+<script>
+const screen=document.getElementById('screen');
+let jobs=JSON.parse(localStorage.getItem('gridJobs')||'[]');
+let lang=localStorage.getItem('gridLang')||'ru';
+
+const words={
+ru:['ТУРБИНЫ','РАБОТЫ','ДОБАВИТЬ РАБОТУ','ПРОБЛЕМЫ NC','ЯЗЫК','НАЗАД','СОХРАНИТЬ','Турбина','Название работы','Описание','ВЫПОЛНЕНО','УДАЛИТЬ','РЕДАКТИРОВАТЬ','ПОИСК'],
+en:['TURBINES','JOBS','ADD JOB','NC ISSUES','LANGUAGE','BACK','SAVE','Turbine','Job name','Description','COMPLETED','DELETE','EDIT','SEARCH'],
+de:['TURBINEN','ARBEITEN','ARBEIT HINZUFÜGEN','NC-PROBLEME','SPRACHE','ZURÜCK','SPEICHERN','Turbine','Arbeitsname','Beschreibung','ERLEDIGT','LÖSCHEN','BEARBEITEN','SUCHE'],
+lv:['TURBĪNAS','DARBI','PIEVIENOT DARBU','NC PROBLĒMAS','VALODA','ATPAKAĻ','SAGLABĀT','Turbīna','Darba nosaukums','Apraksts','PABEIGTS','DZĒST','LABOT','MEKLĒT']
+};
+
+function t(i){return words[lang][i]}
+function save(){
+localStorage.setItem('gridJobs',JSON.stringify(jobs))
+}
+function clear(){
+screen.replaceChildren()
+}
+function text(s){
+let p=document.createElement('p');
+p.textContent=s;
+screen.append(p)
+}
+function btn(s,fn,cls=''){
+let b=document.createElement('button');
+b.textContent=s;
+b.className=cls;
+b.onclick=fn;
+screen.append(b)
+}
+function back(){btn('← '+t(5),home)}
+function home(){
+clear();
+text('TEAM WORK MANAGEMENT');
+btn(t(0),turbines);
+btn(t(1),()=>list());
+btn(t(13),search);
+btn(t(2),()=>edit(-1));
+text(t(10)+': '+jobs.filter(j=>j.done&&!j.nc).length+' / '+jobs.length);
+btn(t(3)+' ('+jobs.filter(j=>j.nc).length+')',()=>list(null,true),'nc');
+btn(t(4),languages);
+text('GRID TEAM · iPhone & Android')
+}
+function turbines(){
+clear();back();
+[...new Set(jobs.map(j=>j.turbine))].forEach(n=>{
+let a=jobs.filter(j=>j.turbine===n);
+btn(n+' ('+a.filter(j=>j.done&&!j.nc).length+'/'+a.length+')',()=>list(n))
+})
+}
+function list(n=null,nc=false,q=''){
+clear();back();
+jobs.forEach((j,i)=>{
+if(n!==null&&j.turbine!==n)return;
+if(nc&&!j.nc)return;
+if(q&&!(j.turbine+' '+j.name+' '+j.description).toLowerCase().includes(q.toLowerCase()))return;
+btn((j.done?'✓ ':'○ ')+j.turbine+' — '+j.name+(j.nc?' · NC: '+j.nc:''),()=>details(i),j.nc?'nc':j.done?'done':'')
+});
+btn('+ '+t(2),()=>edit(-1,n||''))
+}
+function field(h,v,type='text'){
+let e=document.createElement('input');
+e.type=type;e.placeholder=h;e.value=v||'';
+screen.append(e);return e
+}
+function edit(i,n=''){
+clear();back();
+let j=jobs[i]||{};
+let a=field(t(7),j.turbine||n);
+let b=field(t(8),j.name);
+let c=field('',j.date||new Date().toISOString().slice(0,10),'date');
+let d=document.createElement('textarea');
+d.placeholder=t(9);
+d.value=j.description||'';
+screen.append(d);
+btn(t(6),()=>{
+if(!a.value.trim()||!b.value.trim())return;
+let item={...j,turbine:a.value.trim(),name:b.value.trim(),date:c.value,description:d.value,done:j.done||false,updatedAt:new Date().toISOString()};
+if(i<0)jobs.push(item);
+else jobs[i]=item;
+save();list()
+})
+}
+function details(i){
+clear();back();
+let j=jobs[i];
+text(j.turbine+' — '+j.name);
+text(j.description||'');
+text(j.date||'');
+if(j.completedAt)text(new Date(j.completedAt).toLocaleString());
+if(j.nc)text('NC: '+j.nc);
+btn((j.done?'✓ ':'')+t(10),()=>{
+j.done=!j.done;
+if(j.done){j.nc='';j.completedAt=new Date().toISOString()}
+else delete j.completedAt;
+save();details(i)
+},'done');
+btn('NC',()=>{
+let n=prompt('NC',j.nc||'');
+if(n===null)return;
+j.nc=n;
+if(n){j.done=false;delete j.completedAt}
+save();details(i)
+},'nc');
+btn(t(12),()=>edit(i));
+btn(t(11),()=>{
+if(confirm(t(11)+'?')){
+jobs.splice(i,1);save();list()
+}
+})
+}
+function search(){
+clear();back();
+let q=field(t(13),'');
+btn(t(13),()=>list(null,false,q.value))
+}
+function languages(){
+clear();back();
+[['ru','Русский'],['en','English'],['de','Deutsch'],['lv','Latviešu']].forEach(([l,n])=>{
+btn(n,()=>{
+lang=l;localStorage.setItem('gridLang',l);
+document.documentElement.lang=l;home()
+})
+})
+}
+function weather(){
+let w=document.getElementById('weather');
+if(!navigator.geolocation)return;
+navigator.geolocation.getCurrentPosition(async p=>{
+try{
+let a=p.coords.latitude.toFixed(3);
+let b=p.coords.longitude.toFixed(3);
+let url='https://api.open-meteo.com/v1/forecast?latitude='+a+'&longitude='+b+'&current=temperature_2m,wind_speed_10m,wind_gusts_10m&wind_speed_unit=ms';
+let r=await fetch(url);
+if(!r.ok)throw Error();
+let d=(await r.json()).current;
+w.innerText=d.temperature_2m+' °C\n'+d.wind_speed_10m+' / '+d.wind_gusts_10m+' m/s';
+}catch(e){w.innerText='-- °C\n-- m/s'}
+},()=>{w.innerText='GPS —'}, {timeout:15000})
+}
+document.documentElement.lang=lang;
+home();
+weather();
+setInterval(weather,600000);
+</script>
 </body>
 </html>
