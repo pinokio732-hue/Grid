@@ -283,7 +283,6 @@ public class MainActivity extends Activity {
         EditText name = field(local("\u0418\u043c\u044f \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0430", "Employee name", "Name", "Darbinieka v\u0101rds"), profileName());
         name.setSingleLine(true);
         name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(80)});
-        layout.addView(name);
         button(local("\u0421\u041e\u0425\u0420\u0410\u041d\u0418\u0422\u042c", "SAVE", "SPEICHERN", "SAGLAB\u0100T"), () -> {
             String value = name.getText().toString().trim();
             if (value.isEmpty()) { message(local("\u0412\u0432\u0435\u0434\u0438 \u0438\u043c\u044f", "Enter your name", "Name eingeben", "Ievadi v\u0101rdu")); return; }
