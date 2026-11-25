@@ -66,7 +66,7 @@ public class MainActivity extends Activity {
         storage = getSharedPreferences("grid_data", MODE_PRIVATE);
         language = storage.getString("language", "ru");
         loadJobs();
-        showHome();
+        if (profileName().isEmpty()) showProfile(true); else showHome();
     }
 
     private TextView text(String value, int size) {
@@ -198,7 +198,7 @@ public class MainActivity extends Activity {
         button(tr("\u0414\u041e\u0411\u0410\u0412\u0418\u0422\u042c \u0420\u0410\u0411\u041e\u0422\u0423"), () -> editJob(-1));
         button(tr("\u041a\u0410\u041b\u0415\u041d\u0414\u0410\u0420\u042c"), this::showJobs);
         button(tr("\u0424\u041e\u0422\u041e\u0413\u0420\u0410\u0424\u0418\u0418"), this::showGallery);
-        button(tr("\u041a\u041e\u041c\u0410\u041d\u0414\u0410"), () -> message(tr("\u0410\u043a\u043a\u0430\u0443\u043d\u0442\u044b \u0434\u043e\u0431\u0430\u0432\u0438\u043c \u043f\u043e\u0437\u0436\u0435")));
+        button(tr("\u041a\u041e\u041c\u0410\u041d\u0414\u0410"), this::showTeam);
         button(tr("\u0421\u0418\u041d\u0425\u0420\u041e\u041d\u0418\u0417\u0410\u0426\u0418\u042f"), this::showSync);
         button(tr("\u0428\u0410\u0411\u041b\u041e\u041d \u0420\u0410\u0411\u041e\u0422"), this::importTemplate);
         button(tr("\u042f\u0417\u042b\u041a / LANGUAGE"), this::chooseLanguage);
@@ -276,12 +276,59 @@ public class MainActivity extends Activity {
         }
     }
 
+    private String profileName() { return storage.getString("profile_name", "").trim(); }
+    private String profileId() { return storage.getString("profile_id", ""); }
+    private void showProfile(boolean required) {
+        page(local("\u041c\u041e\u0419 \u041f\u0420\u041e\u0424\u0418\u041b\u042c", "MY PROFILE", "MEIN PROFIL", "MANS PROFILS"), required ? null : this::showTeam);
+        EditText name = field(local("\u0418\u043c\u044f \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0430", "Employee name", "Name", "Darbinieka v\u0101rds"), profileName());
+        name.setSingleLine(true);
+        name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(80)});
+        layout.addView(name);
+        button(local("\u0421\u041e\u0425\u0420\u0410\u041d\u0418\u0422\u042c", "SAVE", "SPEICHERN", "SAGLAB\u0100T"), () -> {
+            String value = name.getText().toString().trim();
+            if (value.isEmpty()) { message(local("\u0412\u0432\u0435\u0434\u0438 \u0438\u043c\u044f", "Enter your name", "Name eingeben", "Ievadi v\u0101rdu")); return; }
+            String id = profileId().isEmpty() ? java.util.UUID.randomUUID().toString() : profileId();
+            storage.edit().putString("profile_name", value).putString("profile_id", id).apply();
+            if (required) showHome(); else showTeam();
+        });
+        if (!required) button(local("\u0424\u041e\u0422\u041e \u041f\u0420\u041e\u0424\u0418\u041b\u042f", "PROFILE PHOTO", "PROFILFOTO", "PROFILA FOTO"), () -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.setType("image/*"); intent.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(intent, 202);
+        });
+        button(local("\u042f\u0417\u042b\u041a", "LANGUAGE", "SPRACHE", "VALODA"), this::chooseLanguage);
+    }
+    private void showTeam() {
+        page(local("\u041a\u041e\u041c\u0410\u041d\u0414\u0410", "TEAM", "TEAM", "KOMANDA"), this::showHome);
+        String uri = storage.getString("profile_photo", "");
+        if (!uri.isEmpty()) {
+            ImageView avatar = new ImageView(this); avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            try { avatar.setImageURI(Uri.parse(uri)); layout.addView(avatar, new LinearLayout.LayoutParams(dp(96), dp(96))); } catch (Exception ignored) {}
+        }
+        button(local("\u041c\u043e\u0439 \u043f\u0440\u043e\u0444\u0438\u043b\u044c: ", "My profile: ", "Mein Profil: ", "Mans profils: ") + profileName(), () -> showProfile(false));
+        java.util.Map<String, java.util.ArrayList<JSONObject>> groups = new java.util.LinkedHashMap<>();
+        groups.put(profileId(), new java.util.ArrayList<>());
+        for (JSONObject j : jobs) {
+            if (!j.optBoolean("done") || j.optString("completedBy").isEmpty()) continue;
+            String key = j.optString("completedById", j.optString("completedBy"));
+            groups.computeIfAbsent(key, k -> new java.util.ArrayList<>()).add(j);
+        }
+        for (java.util.Map.Entry<String, java.util.ArrayList<JSONObject>> entry : groups.entrySet()) {
+            java.util.ArrayList<JSONObject> items = entry.getValue();
+            String name = entry.getKey().equals(profileId()) ? profileName() : items.get(0).optString("completedBy");
+            button(name + " \u2022 " + items.size(), () -> {
+                page(name, this::showTeam);
+                for (JSONObject j : items) layout.addView(text(j.optString("turbine") + " / " + j.optString("name") + completionInfo(j), 16));
+            });
+        }
+    }
+
     private String completionInfo(JSONObject j) {
         if (!j.optBoolean("done")) return "";
         long time = j.optLong("completedAt", 0);
         if (time <= 0) return "\n" + local("\u0414\u0430\u0442\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430", "Completion date unknown", "Abschlussdatum unbekannt", "Pabeig\u0161anas datums nav zin\u0101ms");
         String stamp = new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.ROOT).format(new java.util.Date(time));
-        return "\n" + local("\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e: ", "Completed: ", "Abgeschlossen: ", "Pabeigts: ") + stamp;
+        return "\n" + local("\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e: ", "Completed: ", "Abgeschlossen: ", "Pabeigts: ") + stamp + "\n" + local("\u0412\u044b\u043f\u043e\u043b\u043d\u0438\u043b: ", "Completed by: ", "Erledigt von: ", "Izpild\u012bja: ") + (j.optString("completedBy").isEmpty() ? local("\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u043e", "Unknown", "Unbekannt", "Nav zin\u0101ms") : j.optString("completedBy"));
     }
 
     private void showCategory(String name, String group) {
@@ -383,6 +430,7 @@ public class MainActivity extends Activity {
                 j.put("description", description.getText().toString());
                 j.put("done", old.optBoolean("done", false));
                 if (old.optBoolean("done") && old.optLong("completedAt", 0) > 0) j.put("completedAt", old.optLong("completedAt"));
+                if (old.optBoolean("done")) for (String k : new String[]{"completedBy", "completedById"}) if (old.has(k)) j.put(k, old.optString(k));
                 JSONArray array = new JSONArray();
                 for (String uri : draftPhotos) array.put(uri);
                 j.put("photos", array);
@@ -404,6 +452,10 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 202 && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            try { getContentResolver().takePersistableUriPermission(data.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION); storage.edit().putString("profile_photo", data.getData().toString()).apply(); showTeam(); } catch (Exception e) { message("Photo: " + e.getMessage()); }
+            return;
+        }
         if (requestCode != PICK_PHOTOS || resultCode != RESULT_OK || data == null) return;
         int added = 0;
         if (data.getClipData() != null) {
@@ -497,8 +549,8 @@ public class MainActivity extends Activity {
                     try {
                         boolean completed = !j.optBoolean("done");
                         j.put("done", completed);
-                        if (completed) j.put("completedAt", System.currentTimeMillis());
-                        else j.remove("completedAt");
+                        if (completed) { j.put("completedAt", System.currentTimeMillis()); j.put("completedBy", profileName()); j.put("completedById", profileId()); }
+                        else { j.remove("completedAt"); j.remove("completedBy"); j.remove("completedById"); }
                         saveJobs(); returnToJobs.run();
                     } catch (Exception e) { message(tr("\u041e\u0448\u0438\u0431\u043a\u0430")); }
                 } else {
@@ -552,11 +604,17 @@ public class MainActivity extends Activity {
             if (l == null) {
                 JSONObject n = new JSONObject();
                 for (String k : new String[]{"turbine","name","date","description"}) n.put(k,r.optString(k));
-                n.put("done",r.optBoolean("done")); if (n.optBoolean("done") && r.optLong("completedAt",0)>0) n.put("completedAt",r.optLong("completedAt")); n.put("photos",new JSONArray()); next.add(n); index.put(jobKey(n),n);
+                n.put("done",r.optBoolean("done")); if (n.optBoolean("done") && r.optLong("completedAt",0)>0) n.put("completedAt",r.optLong("completedAt")); if (n.optBoolean("done")) for (String k : new String[]{"completedBy","completedById"}) if (r.has(k)) n.put(k,r.optString(k)); n.put("photos",new JSONArray()); next.add(n); index.put(jobKey(n),n);
             } else {
                 boolean different = l.optBoolean("done") != r.optBoolean("done") || !l.optString("date").equals(r.optString("date")) || !l.optString("description").equals(r.optString("description"));
                 if (different || (l.optBoolean("done") && r.optBoolean("done") && l.optLong("completedAt",0)>0 && r.optLong("completedAt",0)>0 && l.optLong("completedAt",0)!=r.optLong("completedAt",0))) conflicts++;
-                else if (l.optBoolean("done") && l.optLong("completedAt",0)<=0 && r.optLong("completedAt",0)>0) l.put("completedAt",r.optLong("completedAt"));
+                else if (l.optBoolean("done")) {
+                    if (!l.optString("completedBy").isEmpty() && !r.optString("completedBy").isEmpty() && (!l.optString("completedById").equals(r.optString("completedById")) || !l.optString("completedBy").equals(r.optString("completedBy")))) conflicts++;
+                    else {
+                        if (l.optLong("completedAt",0)<=0 && r.optLong("completedAt",0)>0) l.put("completedAt",r.optLong("completedAt"));
+                        if (l.optString("completedBy").isEmpty() && l.optLong("completedAt",0)==r.optLong("completedAt",0)) for (String k : new String[]{"completedBy","completedById"}) if (r.has(k)) l.put(k,r.optString(k));
+                    }
+                }
             }
         }
         if (!storage.edit().putString("sync_backup",backup.toString()).putString("sync_incoming",incoming.toString()).putString("jobs",new JSONArray(next).toString()).commit()) throw new java.io.IOException("Save failed");
@@ -904,7 +962,7 @@ public class MainActivity extends Activity {
                 language = codes[which];
                 storage.edit().putString("language", language).apply();
                 dialog.dismiss();
-                showHome();
+                if (profileName().isEmpty()) showProfile(true); else showHome();
             })
             .setNegativeButton(tr("\u041e\u0442\u043c\u0435\u043d\u0430"), null)
             .show();
