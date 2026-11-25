@@ -359,7 +359,7 @@ public class MainActivity extends Activity {
     private void showNcPhotos(JSONObject j, Runnable back) {
         page(local("\u0424\u041e\u0422\u041e NC", "NC PHOTOS", "NC-FOTOS", "NC FOTO"), back);
         layout.addView(text(j.optString("name") + ncInfo(j), 16));
-        button(local("\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0444\u043e\u0442\u043e NC", "Add NC photos", "NC-Fotos hinzuf\xfcgen", "Pievienot NC foto"), () -> {
+        button(local("\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0444\u043e\u0442\u043e NC", "Add NC photos", "NC-Fotos hinzuf\u00fcgen", "Pievienot NC foto"), () -> {
             ncPhotoJob = j; ncPhotoBack = back;
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.setType("image/*"); intent.addCategory(Intent.CATEGORY_OPENABLE);
