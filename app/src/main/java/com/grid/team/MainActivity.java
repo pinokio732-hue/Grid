@@ -203,6 +203,10 @@ public class MainActivity extends Activity {
         button(tr("\u0422\u0423\u0420\u0411\u0418\u041d\u042b"), this::showTurbines);
         button(tr("\u0420\u0410\u0411\u041e\u0422\u042b"), this::showJobs);
         button(tr("\u0414\u041e\u0411\u0410\u0412\u0418\u0422\u042c \u0420\u0410\u0411\u041e\u0422\u0423"), () -> editJob(-1));
+        int nc = 0, done = 0;
+        for (JSONObject j : jobs) { if (hasNc(j)) nc++; else if (j.optBoolean("done")) done++; }
+        layout.addView(text(local("\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e", "Completed", "Erledigt", "Pabeigts") + ": " + done + " / " + jobs.size() + "   NC: " + nc + "   " + local("\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c \u0431\u0435\u0437 NC", "Pending without NC", "Offen ohne NC", "Atliku\u0161i bez NC") + ": " + (jobs.size()-done-nc), 16));
+        button(local("\u0412\u0421\u0415 \u041f\u0420\u041e\u0411\u041b\u0415\u041c\u042b NC", "ALL NC ISSUES", "ALLE NC-PROBLEME", "VISAS NC PROBL\u0112MAS") + " (" + nc + ")", () -> showNcList(null), false, nc > 0);
         button(tr("\u041a\u0410\u041b\u0415\u041d\u0414\u0410\u0420\u042c"), this::showJobs);
         button(tr("\u0424\u041e\u0422\u041e\u0413\u0420\u0410\u0424\u0418\u0418"), this::showGallery);
         button(tr("\u041a\u041e\u041c\u0410\u041d\u0414\u0410"), this::showTeam);
@@ -366,6 +370,32 @@ public class MainActivity extends Activity {
             saveJobs(); back.run();
         } catch (Exception e) { message("NC: " + e.getMessage()); }
     }
+    private void showNcList(String filter) {
+        selectedTurbine = null;
+        jobsReturn = () -> showNcList(filter);
+        page(local("\u041f\u0420\u041e\u0411\u041b\u0415\u041c\u042b NC", "NC ISSUES", "NC-PROBLEME", "NC PROBL\u0112MAS"), this::showHome);
+        java.util.TreeSet<String> turbines = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (JSONObject j : jobs) if (hasNc(j)) turbines.add(j.optString("turbine").trim());
+        String all = local("\u0412\u0441\u0435 \u0442\u0443\u0440\u0431\u0438\u043d\u044b", "All turbines", "Alle Turbinen", "Visas turb\u012bnas");
+        button(local("\u0424\u0438\u043b\u044c\u0442\u0440: ", "Filter: ", "Filter: ", "Filtrs: ") + (filter == null ? all : filter), () -> {
+            java.util.ArrayList<String> names = new java.util.ArrayList<>(turbines);
+            names.add(0, all);
+            new AlertDialog.Builder(this).setTitle(all).setItems(names.toArray(new String[0]), (d,w) -> showNcList(w == 0 ? null : names.get(w))).show();
+        });
+        java.util.ArrayList<Integer> indices = new java.util.ArrayList<>();
+        for (int i=0; i<jobs.size(); i++) {
+            JSONObject j = jobs.get(i);
+            if (hasNc(j) && (filter == null || filter.equalsIgnoreCase(j.optString("turbine").trim()))) indices.add(i);
+        }
+        java.util.Collections.sort(indices, (a,b) -> Long.compare(jobs.get(b).optLong("ncAt"), jobs.get(a).optLong("ncAt")));
+        layout.addView(text("NC: " + indices.size(), 17));
+        if (indices.isEmpty()) layout.addView(text(local("\u041d\u0435\u0442 \u043e\u0442\u043a\u0440\u044b\u0442\u044b\u0445 \u043f\u0440\u043e\u0431\u043b\u0435\u043c", "No open issues", "Keine offenen Probleme", "Nav atv\u0113rtu probl\u0113mu"), 17));
+        for (int index : indices) {
+            JSONObject j = jobs.get(index);
+            button(j.optString("turbine") + "\n" + j.optString("name") + ncInfo(j) + "\n" + local("\u0424\u043e\u0442\u043e \u0440\u0430\u0431\u043e\u0442\u044b: ", "Job photos: ", "Arbeitsfotos: ", "Darba foto: ") + photos(j).length(), () -> jobOptions(index), false, true);
+        }
+    }
+
     private void showCategory(String name, String group) {
         selectedTurbine = name;
         jobsReturn = () -> showCategory(name, group);
