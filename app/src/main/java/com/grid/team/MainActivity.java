@@ -91,7 +91,7 @@ public class MainActivity extends Activity {
 
         LinearLayout shell = new LinearLayout(this);
         shell.setOrientation(LinearLayout.VERTICAL);
-        shell.setPadding(dp(12), dp(12), dp(12), 0);
+        shell.setPadding(dp(12), dp(36), dp(12), 0);
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
         toolbar.setBackground(glassShape(16, true));
