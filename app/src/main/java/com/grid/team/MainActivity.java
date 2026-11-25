@@ -118,14 +118,20 @@ public class MainActivity extends Activity {
     leftTurbine.setPadding(0, 0, 0, 0);
     toolbar.addView(leftTurbine, turbineSize);
 
-    leftTurbine.animate()
-        .rotationBy(360f)
-        .setDuration(3000)
-        .withEndAction(() -> {
-            leftTurbine.setRotation(0f);
-            leftTurbine.animate().rotationBy(360f)
-                .setDuration(3000).start();
-        }).start();
+    android.view.animation.RotateAnimation spin =
+    new android.view.animation.RotateAnimation(
+        0f, 360f,
+        android.view.animation.Animation.RELATIVE_TO_SELF, 0.5f,
+        android.view.animation.Animation.RELATIVE_TO_SELF, 0.5f
+    );
+spin.setDuration(3000);
+spin.setRepeatCount(
+    android.view.animation.Animation.INFINITE
+);
+spin.setInterpolator(
+    new android.view.animation.LinearInterpolator()
+);
+leftTurbine.startAnimation(spin);
 }
         toolbar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         toolbar.addView(new View(this), new LinearLayout.LayoutParams(dp(48), dp(48)));
