@@ -1,33 +1,18 @@
-name: Build Grid APK
 
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+plugins {
+    id 'com.android.application'
+}
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+android {
+    namespace 'com.grid.team'
+    compileSdk 35
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    defaultConfig {
+        applicationId 'com.grid.team'
+        minSdk 26
+        targetSdk 35
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Build APK
-        run: gradle assembleDebug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Grid-APK
-          path: '**/build/outputs/apk/**/*.apk'
-          if-no-files-found: error
+        versionCode 2
+        versionName '1.1'
+    }
+}
