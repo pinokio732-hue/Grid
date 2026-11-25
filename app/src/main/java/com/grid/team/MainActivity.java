@@ -137,6 +137,10 @@ public class MainActivity extends Activity {
     }
 
     private void button(String label, Runnable action, boolean completed) {
+        button(label, action, completed, false);
+    }
+
+    private void button(String label, Runnable action, boolean completed, boolean blocked) {
         Button b = new Button(this);
         b.setText(label);
         b.setTextColor(white);
@@ -144,7 +148,10 @@ public class MainActivity extends Activity {
         b.setTextSize(14);
         b.setTypeface(null, Typeface.BOLD);
         b.setGravity(Gravity.CENTER);
-        if (completed) {
+        if (blocked) {
+            GradientDrawable red = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xff913b3b, 0xff602727});
+            red.setCornerRadius(dp(22)); red.setStroke(dp(1), 0xfff87171); b.setBackground(red);
+        } else if (completed) {
             GradientDrawable green = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 new int[]{0xff287b49, 0xe61b6038, 0xf012432b});
@@ -264,6 +271,9 @@ public class MainActivity extends Activity {
             indices.add(i);
         }
         progress(done, total);
+        int ncCount = 0;
+        for (JSONObject j : jobs) if (name.equalsIgnoreCase(j.optString("turbine").trim()) && hasNc(j)) ncCount++;
+        layout.addView(text("NC: " + ncCount, 16));
         button(tr("+ \u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0440\u0430\u0431\u043e\u0442\u0443"), () -> editJob(-1));
         button(tr("\u0424\u041e\u0422\u041e\u0413\u0420\u0410\u0424\u0418\u0418"), () -> showGallery());
         for (java.util.Map.Entry<String, ArrayList<Integer>> entry : groups.entrySet()) {
@@ -330,6 +340,32 @@ public class MainActivity extends Activity {
         return "\n" + local("\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e: ", "Completed: ", "Abgeschlossen: ", "Pabeigts: ") + stamp + "\n" + local("\u0412\u044b\u043f\u043e\u043b\u043d\u0438\u043b: ", "Completed by: ", "Erledigt von: ", "Izpild\u012bja: ") + (j.optString("completedBy").isEmpty() ? local("\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u043e", "Unknown", "Unbekannt", "Nav zin\u0101ms") : j.optString("completedBy"));
     }
 
+    private boolean hasNc(JSONObject j) { return !j.optString("nc").trim().isEmpty(); }
+    private String ncInfo(JSONObject j) {
+        if (!hasNc(j)) return "";
+        long t = j.optLong("ncAt", 0);
+        return "\nNC: " + j.optString("nc") + "\n" + j.optString("ncBy") + (t > 0 ? " / " + new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.ROOT).format(new java.util.Date(t)) : "");
+    }
+    private void editNc(JSONObject j, Runnable back) {
+        EditText input = new EditText(this);
+        input.setHint(local("\u041f\u0440\u0438\u0447\u0438\u043d\u0430: \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u044b, \u0438\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u044b...", "Reason: materials, tools...", "Grund: Material, Werkzeug...", "Iemesls: materi\u0101li, instrumenti..."));
+        input.setText(j.optString("nc")); input.setMinLines(2);
+        input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(500)});
+        new AlertDialog.Builder(this).setTitle("NC").setView(input)
+            .setNegativeButton(local("\u041e\u0442\u043c\u0435\u043d\u0430", "Cancel", "Abbrechen", "Atcelt"), null)
+            .setNeutralButton(local("\u0423\u0434\u0430\u043b\u0438\u0442\u044c NC", "Clear NC", "NC l\u00f6schen", "Dz\u0113st NC"), (d,w) -> updateNc(j, "", back))
+            .setPositiveButton(local("\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c", "Save", "Speichern", "Saglab\u0101t"), (d,w) -> {
+                String value = input.getText().toString().trim();
+                if (!value.isEmpty()) updateNc(j, value, back);
+            }).show();
+    }
+    private void updateNc(JSONObject j, String value, Runnable back) {
+        try {
+            j.put("nc", value); j.put("ncAt", System.currentTimeMillis()); j.put("ncBy", profileName());
+            if (!value.isEmpty()) { j.put("done", false); j.remove("completedAt"); j.remove("completedBy"); j.remove("completedById"); }
+            saveJobs(); back.run();
+        } catch (Exception e) { message("NC: " + e.getMessage()); }
+    }
     private void showCategory(String name, String group) {
         selectedTurbine = name;
         jobsReturn = () -> showCategory(name, group);
@@ -342,7 +378,7 @@ public class MainActivity extends Activity {
             String category = split < 0 ? local("\u0414\u0440\u0443\u0433\u0438\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", "Other jobs", "Andere Arbeiten", "Citi darbi") : title.substring(0, split);
             if (!group.equals(category)) continue;
             final int index = i;
-            button((j.optBoolean("done") ? "\u2713 " : "\u25cb ") + (split < 0 ? title : title.substring(split + 3)) + completionInfo(j), () -> jobOptions(index), j.optBoolean("done"));
+            button((j.optBoolean("done") ? "\u2713 " : "\u25cb ") + (split < 0 ? title : title.substring(split + 3)) + completionInfo(j) + ncInfo(j), () -> jobOptions(index), j.optBoolean("done"), hasNc(j));
         }
     }
 
@@ -358,7 +394,7 @@ public class MainActivity extends Activity {
             String status = j.optBoolean("done") ? tr("\u2713 \u0412\u042b\u041f\u041e\u041b\u041d\u0415\u041d\u041e") : tr("\u25cb \u0412 \u0420\u0410\u0411\u041e\u0422\u0415");
             String info = j.optString("turbine") + "\n" + j.optString("name") + "\n"
                     + j.optString("date") + "\n" + status + tr(" \u2022 \u0424\u043e\u0442\u043e: ") + photos(j).length() + completionInfo(j);
-            button(info, () -> jobOptions(index), j.optBoolean("done"));
+            button(info + ncInfo(j), () -> jobOptions(index), j.optBoolean("done"), hasNc(j));
         }
     }
 
@@ -430,6 +466,7 @@ public class MainActivity extends Activity {
                 j.put("done", old.optBoolean("done", false));
                 if (old.optBoolean("done") && old.optLong("completedAt", 0) > 0) j.put("completedAt", old.optLong("completedAt"));
                 if (old.optBoolean("done")) for (String k : new String[]{"completedBy", "completedById"}) if (old.has(k)) j.put(k, old.optString(k));
+                for (String k : new String[]{"nc", "ncAt", "ncBy"}) if (old.has(k)) j.put(k, old.get(k));
                 JSONArray array = new JSONArray();
                 for (String uri : draftPhotos) array.put(uri);
                 j.put("photos", array);
@@ -531,12 +568,12 @@ public class MainActivity extends Activity {
         Runnable returnToJobs = jobsReturn != null ? jobsReturn : this::showJobs;
         JSONObject j = jobs.get(index);
         String[] options = {tr("\u041f\u043e\u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c \u043e\u043f\u0438\u0441\u0430\u043d\u0438\u0435"), tr("\u0424\u043e\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u0438 \u0440\u0430\u0431\u043e\u0442\u044b"), tr("\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c"),
-            j.optBoolean("done") ? tr("\u0412\u0435\u0440\u043d\u0443\u0442\u044c \u0432 \u0440\u0430\u0431\u043e\u0442\u0443") : tr("\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u043e\u0439"), tr("\u0423\u0434\u0430\u043b\u0438\u0442\u044c")};
+            j.optBoolean("done") ? tr("\u0412\u0435\u0440\u043d\u0443\u0442\u044c \u0432 \u0440\u0430\u0431\u043e\u0442\u0443") : tr("\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u043e\u0439"), tr("\u0423\u0434\u0430\u043b\u0438\u0442\u044c"), local("\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c / \u0438\u0437\u043c\u0435\u043d\u0438\u0442\u044c NC", "Add / edit NC", "NC hinzuf\u00fcgen / bearbeiten", "Pievienot / labot NC")};
         new AlertDialog.Builder(this).setTitle(j.optString("name"))
             .setItems(options, (dialog, which) -> {
                 if (which == 0) {
                     new AlertDialog.Builder(this).setTitle(tr("\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435"))
-                        .setMessage(j.optString("description", "") + completionInfo(j))
+                        .setMessage(j.optString("description", "") + completionInfo(j) + ncInfo(j))
                         .setPositiveButton("OK", null).show();
                 } else if (which == 1) {
                     page(tr("\u0424\u041e\u0422\u041e \u0420\u0410\u0411\u041e\u0422\u042b"), returnToJobs);
@@ -546,13 +583,14 @@ public class MainActivity extends Activity {
                 } else if (which == 2) editJob(index);
                 else if (which == 3) {
                     try {
+                        if (hasNc(j)) { message(local("\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0443\u0434\u0430\u043b\u0438\u0442\u0435 NC", "Clear NC first", "Zuerst NC l\u00f6schen", "Vispirms dz\u0113siet NC")); return; }
                         boolean completed = !j.optBoolean("done");
                         j.put("done", completed);
                         if (completed) { j.put("completedAt", System.currentTimeMillis()); j.put("completedBy", profileName()); j.put("completedById", profileId()); }
                         else { j.remove("completedAt"); j.remove("completedBy"); j.remove("completedById"); }
                         saveJobs(); returnToJobs.run();
                     } catch (Exception e) { message(tr("\u041e\u0448\u0438\u0431\u043a\u0430")); }
-                } else {
+                } else if (which == 5) { editNc(j, returnToJobs); } else {
                     new AlertDialog.Builder(this).setMessage(tr("\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u044d\u0442\u0443 \u0440\u0430\u0431\u043e\u0442\u0443?"))
                         .setNegativeButton(tr("\u041e\u0442\u043c\u0435\u043d\u0430"), null)
                         .setPositiveButton(tr("\u0423\u0434\u0430\u043b\u0438\u0442\u044c"), (d, w) -> {
@@ -603,8 +641,12 @@ public class MainActivity extends Activity {
             if (l == null) {
                 JSONObject n = new JSONObject();
                 for (String k : new String[]{"turbine","name","date","description"}) n.put(k,r.optString(k));
-                n.put("done",r.optBoolean("done")); if (n.optBoolean("done") && r.optLong("completedAt",0)>0) n.put("completedAt",r.optLong("completedAt")); if (n.optBoolean("done")) for (String k : new String[]{"completedBy","completedById"}) if (r.has(k)) n.put(k,r.optString(k)); n.put("photos",new JSONArray()); next.add(n); index.put(jobKey(n),n);
+                n.put("done",r.optBoolean("done")); if (n.optBoolean("done") && r.optLong("completedAt",0)>0) n.put("completedAt",r.optLong("completedAt")); if (n.optBoolean("done")) for (String k : new String[]{"completedBy","completedById"}) if (r.has(k)) n.put(k,r.optString(k)); for (String k : new String[]{"nc","ncAt","ncBy"}) if (r.has(k)) n.put(k,r.get(k)); if (hasNc(n)) { n.put("done",false); n.remove("completedAt"); n.remove("completedBy"); n.remove("completedById"); } n.put("photos",new JSONArray()); next.add(n); index.put(jobKey(n),n);
             } else {
+                if (r.optLong("ncAt",0) > l.optLong("ncAt",0)) {
+                    for (String k : new String[]{"nc","ncAt","ncBy"}) if (r.has(k)) l.put(k,r.get(k));
+                    if (hasNc(l)) { l.put("done",false); l.remove("completedAt"); l.remove("completedBy"); l.remove("completedById"); }
+                } else if (r.optLong("ncAt",0) == l.optLong("ncAt",0) && !r.optString("nc").equals(l.optString("nc"))) conflicts++;
                 boolean different = l.optBoolean("done") != r.optBoolean("done") || !l.optString("date").equals(r.optString("date")) || !l.optString("description").equals(r.optString("description"));
                 if (different || (l.optBoolean("done") && r.optBoolean("done") && l.optLong("completedAt",0)>0 && r.optLong("completedAt",0)>0 && l.optLong("completedAt",0)!=r.optLong("completedAt",0))) conflicts++;
                 else if (l.optBoolean("done")) {
