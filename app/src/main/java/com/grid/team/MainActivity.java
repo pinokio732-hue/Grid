@@ -636,12 +636,29 @@ public class MainActivity extends Activity {
     }
 
     private void openPhoto(String uri) {
-        try {
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(Uri.parse(uri), "image/*");
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivity(intent);
-        } catch (Exception e) { message(tr("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043a\u0440\u044b\u0442\u044c \u0444\u043e\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u044e")); }
+        ImageView image=new ImageView(this); image.setAdjustViewBounds(true);
+        try { image.setImageURI(Uri.parse(uri)); } catch(Exception e) { message("Photo unavailable"); return; }
+        new AlertDialog.Builder(this).setView(image).setPositiveButton("OK",null)
+            .setNeutralButton(local("\u0421\u043a\u0430\u0447\u0430\u0442\u044c", "Save", "Speichern", "Saglab\u0101t"),(d,w)->savePhotoToGallery(uri)).show();
+    }
+    private void savePhotoToGallery(String uri) {
+        new Thread(()-> {
+            android.net.Uri target=null;
+            try {
+                if(android.os.Build.VERSION.SDK_INT<29) throw new java.io.IOException("Android 10+ required");
+                byte[] bytes=photoBytes(uri);
+                android.graphics.BitmapFactory.Options opts=new android.graphics.BitmapFactory.Options(); opts.inJustDecodeBounds=true;
+                android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,opts);
+                String mime=opts.outMimeType; if(mime==null || !mime.startsWith("image/")) throw new java.io.IOException("Invalid image");
+                String ext=android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime); if(ext==null) ext="img";
+                android.content.ContentValues v=new android.content.ContentValues(); v.put("_display_name","GRID_"+System.currentTimeMillis()+"."+ext); v.put("mime_type",mime); v.put("relative_path","Pictures/GRID"); v.put("is_pending",1);
+                target=getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,v);
+                if(target==null) throw new java.io.IOException("Save failed");
+                try(java.io.OutputStream out=getContentResolver().openOutputStream(target)){if(out==null) throw new java.io.IOException("Save failed"); out.write(bytes);}
+                v.clear(); v.put("is_pending",0); getContentResolver().update(target,v,null,null);
+                runOnUiThread(()->message(local("\u0424\u043e\u0442\u043e \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e", "Photo saved", "Foto gespeichert", "Foto saglab\u0101ts")));
+            } catch(Exception e){if(target!=null) try{getContentResolver().delete(target,null,null);}catch(Exception ignored){} runOnUiThread(()->message("Photo: "+e.getMessage()));}
+        }).start();
     }
 
     private void jobOptions(int index) {
@@ -682,12 +699,12 @@ public class MainActivity extends Activity {
 
     private volatile java.net.ServerSocket syncServer;
     private boolean syncBusy;
-    private static final int SYNC_PORT = 38765;
-    private static final int SYNC_LIMIT = 8 * 1024 * 1024;
+    private static final int SYNC_PORT = 38766;
+    private static final int SYNC_LIMIT = 32 * 1024 * 1024;
     private String syncText(String ru, String en, String de, String lv) { return local(ru,en,de,lv); }
     private void showSync() {
         page(local("\u0421\u0418\u041d\u0425\u0420\u041e\u041d\u0418\u0417\u0410\u0426\u0418\u042f", "SYNC", "SYNCHRONISIERUNG", "SINHRONIZ\u0100CIJA"), () -> { stopSync(); showHome(); });
-        layout.addView(text(local("\u041e\u0434\u043d\u0430 \u0441\u0435\u0442\u044c Wi-Fi. \u0422\u043e\u043b\u044c\u043a\u043e \u0437\u0430\u0434\u0430\u043d\u0438\u044f, \u0431\u0435\u0437 \u0444\u043e\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u0439. \u041f\u0440\u0438 \u043a\u043e\u043d\u0444\u043b\u0438\u043a\u0442\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u044f\u044e\u0442\u0441\u044f \u043e\u0431\u0435 \u0432\u0435\u0440\u0441\u0438\u0438 \u0432 \u0440\u0435\u0437\u0435\u0440\u0432\u043d\u043e\u0439 \u043a\u043e\u043f\u0438\u0438.", "Same Wi-Fi. Jobs only, no photos. Conflicts are backed up.", "Gleiches WLAN. Nur Aufgaben, keine Fotos. Konflikte werden gesichert.", "Viens Wi-Fi. Tikai darbi, bez foto. Konflikti tiek saglab\u0101ti."), 15));
+        layout.addView(text(local("\u041e\u0434\u043d\u0430 \u0441\u0435\u0442\u044c Wi-Fi. \u0417\u0430\u0434\u0430\u043d\u0438\u044f \u0438 \u0444\u043e\u0442\u043e NC / \u0440\u0430\u0431\u043e\u0442. \u0422\u043e\u043b\u044c\u043a\u043e \u0434\u043e\u0432\u0435\u0440\u0435\u043d\u043d\u0430\u044f \u0441\u0435\u0442\u044c. \u041e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u043e\u0431\u0430 \u0442\u0435\u043b\u0435\u0444\u043e\u043d\u0430.", "Same Wi-Fi. Jobs and NC / job photos. Trusted network only. Update both phones.", "Gleiches WLAN. Aufgaben und Fotos. Nur vertrauensw\u00fcrdiges Netz. Beide Ger\u00e4te aktualisieren.", "Viens Wi-Fi. Darbi un foto. Tikai uzticams t\u012bkls. Atjauniniet abus t\u0101lru\u0146us."), 15));
         button(local("\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u0441\u0435\u0440\u0432\u0435\u0440", "Start server", "Server starten", "Izveidot serveri"), this::startSync);
         button(local("\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f", "Connect", "Verbinden", "Piesl\u0113gties"), this::connectSync);
         button(local("\u041e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0441\u0435\u0440\u0432\u0435\u0440", "Stop server", "Server stoppen", "Aptur\u0113t serveri"), () -> { stopSync(); showSync(); });
@@ -700,12 +717,65 @@ public class MainActivity extends Activity {
     private String jobKey(JSONObject j) {
         return j.optString("turbine").trim().toLowerCase(Locale.ROOT) + "\n" + j.optString("name").trim().toLowerCase(Locale.ROOT);
     }
+    private byte[] photoBytes(String uri) throws Exception {
+        try (java.io.InputStream in = getContentResolver().openInputStream(Uri.parse(uri)); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            if (in == null) throw new java.io.IOException("Photo unavailable");
+            byte[] buf = new byte[8192]; int n;
+            while ((n=in.read(buf)) != -1) { if(out.size()+n>12*1024*1024) throw new java.io.IOException("Photo exceeds 12 MB"); out.write(buf,0,n); }
+            return out.toByteArray();
+        }
+    }
+    private String photoHash(byte[] bytes) throws Exception {
+        byte[] hash=java.security.MessageDigest.getInstance("SHA-256").digest(bytes);
+        StringBuilder b=new StringBuilder(); for(byte x:hash) b.append(String.format(Locale.ROOT,"%02x",x & 255)); return b.toString();
+    }
     private JSONArray syncSnapshot() throws Exception {
-        JSONArray a = new JSONArray();
-        for (JSONObject j : jobs) {
-            JSONObject c = new JSONObject(j.toString()); c.remove("photos"); c.remove("ncPhotos"); a.put(c);
+        return new JSONArray(new JSONArray(jobs).toString());
+    }
+    private String photoPacket(JSONArray a) throws Exception {
+        int total=0;
+        for(int i=0;i<a.length();i++) {
+            JSONObject j=a.getJSONObject(i);
+            for(String key:new String[]{"photos","ncPhotos"}) {
+                JSONArray src=j.optJSONArray(key), dst=new JSONArray();
+                if(src!=null) for(int k=0;k<src.length();k++) {
+                    byte[] bytes=photoBytes(src.getString(k)); total+=bytes.length;
+                    if(total>20*1024*1024) throw new java.io.IOException("Photo exchange exceeds 20 MB");
+                    dst.put(android.util.Base64.encodeToString(bytes,android.util.Base64.NO_WRAP));
+                }
+                j.put(key,dst);
+            }
+        }
+        return a.toString();
+    }
+    private JSONArray importPhotos(JSONArray a) throws Exception {
+        java.io.File dir=new java.io.File(getFilesDir(),"synced_photos");
+        if(!dir.isDirectory() && !dir.mkdirs()) throw new java.io.IOException("Photo folder unavailable");
+        for(int i=0;i<a.length();i++) for(String key:new String[]{"photos","ncPhotos"}) {
+            JSONObject j=a.getJSONObject(i); JSONArray src=j.optJSONArray(key), dst=new JSONArray();
+            if(src!=null) for(int k=0;k<src.length();k++) {
+                byte[] bytes=android.util.Base64.decode(src.getString(k),android.util.Base64.DEFAULT);
+                if(bytes.length>12*1024*1024) throw new java.io.IOException("Photo too large");
+                android.graphics.BitmapFactory.Options opts=new android.graphics.BitmapFactory.Options(); opts.inJustDecodeBounds=true;
+                android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,opts);
+                if(opts.outWidth<=0 || opts.outHeight<=0) throw new java.io.IOException("Invalid image");
+                java.io.File f=new java.io.File(dir,photoHash(bytes));
+                if(!f.exists()) { java.io.File tmp=java.io.File.createTempFile("photo", ".tmp",dir); try { try(java.io.FileOutputStream out=new java.io.FileOutputStream(tmp)){out.write(bytes);} if(!tmp.renameTo(f)) throw new java.io.IOException("Photo save failed"); } finally {tmp.delete();} }
+                dst.put(Uri.fromFile(f).toString());
+            }
+            j.put(key,dst);
         }
         return a;
+    }
+    private void mergePhotos(JSONObject l, JSONObject r, String key) throws Exception {
+        JSONArray a=l.optJSONArray(key), b=r.optJSONArray(key), result=new JSONArray();
+        java.util.HashSet<String> seen=new java.util.HashSet<>();
+        for(JSONArray list:new JSONArray[]{a,b}) if(list!=null) for(int i=0;i<list.length();i++) {
+            String uri=list.getString(i), id;
+            try { id=photoHash(photoBytes(uri)); } catch(Exception e) { id=uri; }
+            if(seen.add(id)) result.put(uri);
+        }
+        l.put(key,result);
     }
     private int mergeSync(JSONArray incoming) throws Exception {
         JSONArray backup = new JSONArray(); for (JSONObject j : jobs) backup.put(j);
@@ -721,13 +791,15 @@ public class MainActivity extends Activity {
             if (l == null) {
                 JSONObject n = new JSONObject();
                 for (String k : new String[]{"turbine","name","date","description"}) n.put(k,r.optString(k));
-                n.put("done",r.optBoolean("done")); if (n.optBoolean("done") && r.optLong("completedAt",0)>0) n.put("completedAt",r.optLong("completedAt")); if (n.optBoolean("done")) for (String k : new String[]{"completedBy","completedById"}) if (r.has(k)) n.put(k,r.optString(k)); for (String k : new String[]{"nc","ncAt","ncBy"}) if (r.has(k)) n.put(k,r.get(k)); if (hasNc(n)) { n.put("done",false); n.remove("completedAt"); n.remove("completedBy"); n.remove("completedById"); } n.put("photos",new JSONArray()); next.add(n); index.put(jobKey(n),n);
+                n.put("done",r.optBoolean("done")); if (n.optBoolean("done") && r.optLong("completedAt",0)>0) n.put("completedAt",r.optLong("completedAt")); if (n.optBoolean("done")) for (String k : new String[]{"completedBy","completedById"}) if (r.has(k)) n.put(k,r.optString(k)); for (String k : new String[]{"nc","ncAt","ncBy"}) if (r.has(k)) n.put(k,r.get(k)); if (hasNc(n)) { n.put("done",false); n.remove("completedAt"); n.remove("completedBy"); n.remove("completedById"); } mergePhotos(n,r,"photos"); if(hasNc(n)) mergePhotos(n,r,"ncPhotos"); next.add(n); index.put(jobKey(n),n);
             } else {
                 if (r.optLong("ncAt",0) > l.optLong("ncAt",0)) {
                     if (!r.optString("nc").equals(l.optString("nc"))) l.remove("ncPhotos");
                     for (String k : new String[]{"nc","ncAt","ncBy"}) if (r.has(k)) l.put(k,r.get(k));
                     if (hasNc(l)) { l.put("done",false); l.remove("completedAt"); l.remove("completedBy"); l.remove("completedById"); }
                 } else if (r.optLong("ncAt",0) == l.optLong("ncAt",0) && !r.optString("nc").equals(l.optString("nc"))) conflicts++;
+                mergePhotos(l,r,"photos");
+                if(hasNc(l) && l.optString("nc").equals(r.optString("nc"))) mergePhotos(l,r,"ncPhotos");
                 boolean different = l.optBoolean("done") != r.optBoolean("done") || !l.optString("date").equals(r.optString("date")) || !l.optString("description").equals(r.optString("description"));
                 if (different || (l.optBoolean("done") && r.optBoolean("done") && l.optLong("completedAt",0)>0 && r.optLong("completedAt",0)>0 && l.optLong("completedAt",0)!=r.optLong("completedAt",0))) conflicts++;
                 else if (l.optBoolean("done")) {
@@ -759,16 +831,16 @@ public class MainActivity extends Activity {
     private void startSync() {
         if(syncBusy || syncServer!=null) return;
         try {
-            final String snapshot=syncSnapshot().toString();
+            final JSONArray snapshot=syncSnapshot();
             final String pin=String.format(Locale.US,"%08d",new java.security.SecureRandom().nextInt(100000000));
             final java.net.ServerSocket server=new java.net.ServerSocket(); server.bind(new java.net.InetSocketAddress(SYNC_PORT)); server.setSoTimeout(120000); syncServer=server;
             new AlertDialog.Builder(this).setTitle("Wi-Fi GRID").setMessage("IP:\n"+syncAddresses()+"PIN: "+pin+"\n120 sec").setPositiveButton("OK",null).show();
             new Thread(() -> {
                 try (java.net.ServerSocket ss=server; java.net.Socket socket=ss.accept()) {
-                    socket.setSoTimeout(15000);
+                    socket.setSoTimeout(120000);
                     java.io.DataInputStream in=new java.io.DataInputStream(socket.getInputStream()); java.io.DataOutputStream out=new java.io.DataOutputStream(socket.getOutputStream());
                     if(!pin.equals(readSync(in))) throw new java.io.IOException("Wrong PIN");
-                    JSONArray incoming=new JSONArray(readSync(in)); writeSync(out,snapshot);
+                    JSONArray incoming=importPhotos(new JSONArray(readSync(in))); writeSync(out,photoPacket(snapshot));
                     runOnUiThread(() -> { if(syncServer==server) syncResult(incoming); });
                 } catch(Exception e) { runOnUiThread(() -> { if(syncServer==server) message("Sync: "+e.getMessage()); }); }
                 finally { runOnUiThread(() -> { if(syncServer==server) syncServer=null; }); }
@@ -784,13 +856,13 @@ public class MainActivity extends Activity {
             final String host=ip.getText().toString().trim(), code=pin.getText().toString().trim();
             if(!host.matches("[0-9.]{7,15}") || !code.matches("[0-9]{8}")) { message("Invalid IP / PIN"); return; }
             try {
-                final String snapshot=syncSnapshot().toString(); syncBusy=true;
+                final JSONArray snapshot=syncSnapshot(); syncBusy=true;
                 new Thread(()-> {
                     try(java.net.Socket s=new java.net.Socket()) {
                         java.net.InetAddress addr=java.net.InetAddress.getByName(host); if(!addr.isSiteLocalAddress()) throw new java.io.IOException("Local IP only");
-                        s.connect(new java.net.InetSocketAddress(addr,SYNC_PORT),5000); s.setSoTimeout(15000);
+                        s.connect(new java.net.InetSocketAddress(addr,SYNC_PORT),5000); s.setSoTimeout(120000);
                         java.io.DataOutputStream out=new java.io.DataOutputStream(s.getOutputStream()); java.io.DataInputStream in=new java.io.DataInputStream(s.getInputStream());
-                        writeSync(out,code); writeSync(out,snapshot); JSONArray incoming=new JSONArray(readSync(in)); runOnUiThread(()->syncResult(incoming));
+                        writeSync(out,code); writeSync(out,photoPacket(snapshot)); JSONArray incoming=importPhotos(new JSONArray(readSync(in))); runOnUiThread(()->syncResult(incoming));
                     } catch(Exception e) { runOnUiThread(()->message("Sync: "+e.getMessage())); }
                     finally { runOnUiThread(()->syncBusy=false); }
                 }).start();
