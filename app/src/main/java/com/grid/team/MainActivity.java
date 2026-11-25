@@ -275,6 +275,7 @@ public class MainActivity extends Activity {
             indices.add(i);
         }
         progress(done, total);
+        button(local("\u0421\u041e\u0417\u0414\u0410\u0422\u042c PDF", "CREATE PDF REPORT", "PDF-BERICHT ERSTELLEN", "IZVEIDOT PDF"), () -> exportReport(name));
         int ncCount = 0;
         for (JSONObject j : jobs) if (name.equalsIgnoreCase(j.optString("turbine").trim()) && hasNc(j)) ncCount++;
         layout.addView(text("NC: " + ncCount, 16));
@@ -287,6 +288,92 @@ public class MainActivity extends Activity {
             final ArrayList<Integer> indices = entry.getValue();
             button(group + " (" + completed + "/" + indices.size() + ")", () -> showCategory(name, group));
             progress(completed, indices.size());
+        }
+    }
+
+    private void exportReport(String turbine) {
+        final ArrayList<JSONObject> snapshot = new ArrayList<>();
+        try { for (JSONObject j : jobs) if (turbine.equalsIgnoreCase(j.optString("turbine").trim())) snapshot.add(new JSONObject(j.toString())); }
+        catch (Exception e) { message(e.toString()); return; }
+        if (android.os.Build.VERSION.SDK_INT < 29) { message("Android 10+ required"); return; }
+        message(local("\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 PDF...", "Creating PDF...", "PDF wird erstellt...", "Veido PDF..."));
+        new Thread(() -> {
+            Uri target = null;
+            try (android.graphics.pdf.PdfDocument pdf = new android.graphics.pdf.PdfDocument()) {
+                ReportWriter w = new ReportWriter(pdf, turbine);
+                int done=0, nc=0;
+                for (JSONObject j : snapshot) { if (hasNc(j)) nc++; else if (j.optBoolean("done")) done++; }
+                w.line(local("\u041e\u0442\u0447\u0451\u0442 \u043f\u043e \u0442\u0443\u0440\u0431\u0438\u043d\u0435", "Turbine report", "Turbinenbericht", "Turb\u012bnas p\u0101rskats"), 21, 0xff17354a);
+                w.line(new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm z", Locale.ROOT).format(new java.util.Date()), 11, 0xff555555);
+                w.line(local("\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e", "Completed", "Erledigt", "Pabeigts") + ": " + done + "/" + snapshot.size() + " (" + (snapshot.isEmpty()?0:100L*done/snapshot.size()) + "%)   NC: " + nc + "   " + local("\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c \u0431\u0435\u0437 NC", "Pending without NC", "Offen ohne NC", "Atliku\u0161i bez NC") + ": " + (snapshot.size()-done-nc), 13, 0xff17354a);
+                for (int state : new int[]{0,1,2}) {
+                    w.line(state==0?local("\u041e\u0442\u043a\u0440\u044b\u0442\u044b\u0435 NC", "Open NC", "Offene NC", "Atv\u0113rtie NC"):state==1?local("\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u044b\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", "Completed jobs", "Erledigte Arbeiten", "Pabeigtie darbi"):local("\u041d\u0435\u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d\u043d\u044b\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", "Pending jobs", "Offene Arbeiten", "Nepabeigtie darbi"), 17, 0xff17354a);
+                    for (JSONObject j : snapshot) {
+                        int s=hasNc(j)?0:j.optBoolean("done")?1:2;
+                        if(s!=state) continue;
+                        w.line(j.optString("name"), 12, s==0?0xffa12626:s==1?0xff17663a:0xff333333);
+                        if(s==0) {
+                            w.line(ncInfo(j).trim(), 11, 0xff333333);
+                            JSONArray a=ncPhotos(j);
+                            for(int i=0;i<a.length();i++) w.photo(a.optString(i));
+                        } else if(s==1) w.line(completionInfo(j).trim(), 11, 0xff555555);
+                        w.y+=7;
+                    }
+                }
+                w.finish();
+                String name="GRID_"+turbine.replaceAll("[^a-zA-Z0-9_-]","_")+"_"+System.currentTimeMillis()+".pdf";
+                android.content.ContentValues v=new android.content.ContentValues();
+                v.put("_display_name",name); v.put("mime_type","application/pdf"); v.put("relative_path","Download/GRID"); v.put("is_pending",1);
+                target=getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,v);
+                if(target==null) throw new java.io.IOException("PDF save failed");
+                try(java.io.OutputStream out=getContentResolver().openOutputStream(target)){if(out==null) throw new java.io.IOException("PDF output unavailable"); pdf.writeTo(out);}
+                v.clear(); v.put("is_pending",0); getContentResolver().update(target,v,null,null);
+                final Uri result=target;
+                runOnUiThread(()->{
+                    Intent share=new Intent(Intent.ACTION_SEND); share.setType("application/pdf"); share.putExtra(Intent.EXTRA_STREAM,result); share.setClipData(android.content.ClipData.newRawUri("GRID PDF",result)); share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    message(local("PDF \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d \u0432 Download/GRID", "PDF saved in Download/GRID", "PDF in Download/GRID gespeichert", "PDF saglab\u0101ts Download/GRID"));
+                    try { startActivity(Intent.createChooser(share,"GRID PDF")); } catch(Exception e){message(e.toString());}
+                });
+            } catch(Exception e){if(target!=null) try{getContentResolver().delete(target,null,null);}catch(Exception ignored){} runOnUiThread(()->message("PDF: "+e.getMessage()));}
+        }).start();
+    }
+
+    private class ReportWriter {
+        final android.graphics.pdf.PdfDocument pdf;
+        final String turbine;
+        android.graphics.pdf.PdfDocument.Page p;
+        android.graphics.Canvas c;
+        int y, number;
+        ReportWriter(android.graphics.pdf.PdfDocument pdf,String turbine){this.pdf=pdf;this.turbine=turbine;next();}
+        void finish(){if(p!=null){pdf.finishPage(p);p=null;}}
+        void next(){
+            finish(); p=pdf.startPage(new android.graphics.pdf.PdfDocument.PageInfo.Builder(595,842,++number).create()); c=p.getCanvas();
+            android.graphics.Paint paint=new android.graphics.Paint(3); paint.setColor(0xff17354a); c.drawRect(0,0,595,65,paint);
+            paint.setColor(Color.WHITE); paint.setTextSize(23); paint.setTypeface(Typeface.DEFAULT_BOLD); c.drawText("GRID TEAM",36,39,paint);
+            paint.setColor(0xff555555); paint.setTextSize(10); c.drawText("GRID  |  "+number,36,817,paint); y=80;
+            line(turbine.length()>150?turbine.substring(0,150):turbine,14,0xff17354a);
+        }
+        void line(String value,int size,int color){
+            android.text.TextPaint paint=new android.text.TextPaint(3); paint.setColor(color); paint.setTextSize(size); paint.setTypeface(size>=14?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);
+            android.text.StaticLayout sl=android.text.StaticLayout.Builder.obtain(value,0,value.length(),paint,523).setIncludePad(false).build();
+            for(int i=0;i<sl.getLineCount();i++){
+                int h=sl.getLineBottom(i)-sl.getLineTop(i); if(y+h>790) next();
+                c.save(); c.clipRect(36,y,559,y+h); c.translate(36,y-sl.getLineTop(i)); sl.draw(c); c.restore(); y+=h;
+            } y+=5;
+        }
+        void photo(String uri){
+            android.graphics.Bitmap bitmap=null;
+            try {
+                android.graphics.BitmapFactory.Options o=new android.graphics.BitmapFactory.Options(); o.inJustDecodeBounds=true;
+                try(java.io.InputStream in=getContentResolver().openInputStream(Uri.parse(uri))){android.graphics.BitmapFactory.decodeStream(in,null,o);}
+                if(o.outWidth<=0||o.outHeight<=0) throw new java.io.IOException("Invalid photo");
+                o.inSampleSize=1; while(Math.max(o.outWidth,o.outHeight)/o.inSampleSize>1400) o.inSampleSize*=2; o.inJustDecodeBounds=false;
+                try(java.io.InputStream in=getContentResolver().openInputStream(Uri.parse(uri))){bitmap=android.graphics.BitmapFactory.decodeStream(in,null,o);}
+                if(bitmap==null) throw new java.io.IOException("Photo unavailable");
+                float scale=Math.min(523f/bitmap.getWidth(),260f/bitmap.getHeight()); int h=Math.max(1,(int)(bitmap.getHeight()*scale));
+                if(y+h>790) next(); c.drawBitmap(bitmap,null,new android.graphics.RectF(36,y,36+bitmap.getWidth()*scale,y+h),new android.graphics.Paint(3)); y+=h+10;
+            } catch(Exception e){line(local("\u0424\u043e\u0442\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e", "Photo unavailable", "Foto nicht verf\u00fcgbar", "Foto nav pieejams"),10,0xffa12626);}
+            finally{if(bitmap!=null) bitmap.recycle();}
         }
     }
 
