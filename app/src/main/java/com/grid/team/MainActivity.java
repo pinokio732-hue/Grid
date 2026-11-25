@@ -1,5 +1,13 @@
 package com.grid.team;
-
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationManager;
+import android.location.LocationListener;
+import java.net.URL;
+import java.net.HttpURLConnection;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
@@ -31,7 +39,9 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Locale;
 
-public class MainActivity extends Activity {
+public class MainActivity extends Activity {    private TextView weatherText;
+    private LocationManager locationManager;
+    private static final int LOCATION_PERMISSION = 501;
     private static final int PICK_PHOTOS = 201;
     private final ArrayList<JSONObject> jobs = new ArrayList<>();
     private final ArrayList<String> draftPhotos = new ArrayList<>();
@@ -134,7 +144,12 @@ spin.setInterpolator(
 leftTurbine.startAnimation(spin);
 }
         toolbar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        toolbar.addView(new View(this), new LinearLayout.LayoutParams(dp(48), dp(48)));
+TextView weatherText = new TextView(this);
+weatherText.setText("-- °C\n-- m/s");
+weatherText.setTextColor(0xFFFFFFFF);
+weatherText.setTextSize(12);
+weatherText.setGravity(17);
+toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
         shell.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
