@@ -299,7 +299,9 @@ public class MainActivity extends Activity {
         message(local("\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 PDF...", "Creating PDF...", "PDF wird erstellt...", "Veido PDF..."));
         new Thread(() -> {
             Uri target = null;
-            try (android.graphics.pdf.PdfDocument pdf = new android.graphics.pdf.PdfDocument()) {
+            android.graphics.pdf.PdfDocument pdf = null;
+            try {
+                pdf = new android.graphics.pdf.PdfDocument();
                 ReportWriter w = new ReportWriter(pdf, turbine);
                 int done=0, nc=0;
                 for (JSONObject j : snapshot) { if (hasNc(j)) nc++; else if (j.optBoolean("done")) done++; }
@@ -335,6 +337,7 @@ public class MainActivity extends Activity {
                     try { startActivity(Intent.createChooser(share,"GRID PDF")); } catch(Exception e){message(e.toString());}
                 });
             } catch(Exception e){if(target!=null) try{getContentResolver().delete(target,null,null);}catch(Exception ignored){} runOnUiThread(()->message("PDF: "+e.getMessage()));}
+            finally { if (pdf != null) try { pdf.close(); } catch (Exception ignored) {} }
         }).start();
     }
 
