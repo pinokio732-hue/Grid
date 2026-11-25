@@ -109,6 +109,24 @@ public class MainActivity extends Activity {
         title.setTypeface(null, Typeface.BOLD);
         title.setGravity(Gravity.CENTER);
         title.setPadding(dp(4), dp(8), dp(4), dp(8));
+        if ("GRID".equalsIgnoreCase(heading.trim())) {
+    LinearLayout.LayoutParams turbineSize =
+        new LinearLayout.LayoutParams(dp(28), dp(28));
+
+    TextView leftTurbine = text("✳", 27);
+    leftTurbine.setGravity(Gravity.CENTER);
+    leftTurbine.setPadding(0, 0, 0, 0);
+    toolbar.addView(leftTurbine, turbineSize);
+
+    leftTurbine.animate()
+        .rotationBy(360f)
+        .setDuration(3000)
+        .withEndAction(() -> {
+            leftTurbine.setRotation(0f);
+            leftTurbine.animate().rotationBy(360f)
+                .setDuration(3000).start();
+        }).start();
+}
         toolbar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         toolbar.addView(new View(this), new LinearLayout.LayoutParams(dp(48), dp(48)));
         shell.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
