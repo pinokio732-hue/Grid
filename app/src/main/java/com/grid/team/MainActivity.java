@@ -202,7 +202,7 @@ public class MainActivity extends Activity {
         layout.addView(sub);
         button(tr("\u0422\u0423\u0420\u0411\u0418\u041d\u042b"), this::showTurbines);
         button(tr("\u0420\u0410\u0411\u041e\u0422\u042b"), this::showJobs);
-        button(tr("\u0414\u041e\u0411\u0410\u0412\u0418\u0422\u042c \u0420\u0410\u0411\u041e\u0422\u0423"), () -> editJob(-1));
+        button(local("\u041f\u041e\u0418\u0421\u041a", "SEARCH", "SUCHE", "MEKL\u0112\u0160ANA"), () -> showSearch("", 0));button(tr("\u0414\u041e\u0411\u0410\u0412\u0418\u0422\u042c \u0420\u0410\u0411\u041e\u0422\u0423"), () -> editJob(-1));
         int nc = 0, done = 0;
         for (JSONObject j : jobs) { if (hasNc(j)) nc++; else if (j.optBoolean("done")) done++; }
         layout.addView(text(local("\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e", "Completed", "Erledigt", "Pabeigts") + ": " + done + " / " + jobs.size() + "   NC: " + nc + "   " + local("\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c \u0431\u0435\u0437 NC", "Pending without NC", "Offen ohne NC", "Atliku\u0161i bez NC") + ": " + (jobs.size()-done-nc), 16));
