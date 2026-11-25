@@ -186,7 +186,7 @@ public class MainActivity extends Activity {
         button(tr("\u041a\u0410\u041b\u0415\u041d\u0414\u0410\u0420\u042c"), this::showJobs);
         button(tr("\u0424\u041e\u0422\u041e\u0413\u0420\u0410\u0424\u0418\u0418"), this::showGallery);
         button(tr("\u041a\u041e\u041c\u0410\u041d\u0414\u0410"), () -> message(tr("\u0410\u043a\u043a\u0430\u0443\u043d\u0442\u044b \u0434\u043e\u0431\u0430\u0432\u0438\u043c \u043f\u043e\u0437\u0436\u0435")));
-        button(tr("\u0421\u0418\u041d\u0425\u0420\u041e\u041d\u0418\u0417\u0410\u0426\u0418\u042f"), () -> message(tr("\u041f\u043e\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0435 \u0442\u043e\u043b\u044c\u043a\u043e \u043d\u0430 \u044d\u0442\u043e\u043c \u0442\u0435\u043b\u0435\u0444\u043e\u043d\u0435")));
+        button(tr("\u0421\u0418\u041d\u0425\u0420\u041e\u041d\u0418\u0417\u0410\u0426\u0418\u042f"), this::showSync);
         button(tr("\u0428\u0410\u0411\u041b\u041e\u041d \u0420\u0410\u0411\u041e\u0422"), this::importTemplate);
         button(tr("\u042f\u0417\u042b\u041a / LANGUAGE"), this::chooseLanguage);
     }
@@ -484,6 +484,112 @@ public class MainActivity extends Activity {
                         }).show();
                 }
             }).show();
+    }
+
+    private volatile java.net.ServerSocket syncServer;
+    private boolean syncBusy;
+    private static final int SYNC_PORT = 38765;
+    private static final int SYNC_LIMIT = 8 * 1024 * 1024;
+    private String syncText(String ru, String en, String de, String lv) { return local(ru,en,de,lv); }
+    private void showSync() {
+        page(local("\u0421\u0418\u041d\u0425\u0420\u041e\u041d\u0418\u0417\u0410\u0426\u0418\u042f", "SYNC", "SYNCHRONISIERUNG", "SINHRONIZ\u0100CIJA"), () -> { stopSync(); showHome(); });
+        layout.addView(text(local("\u041e\u0434\u043d\u0430 \u0441\u0435\u0442\u044c Wi-Fi. \u0422\u043e\u043b\u044c\u043a\u043e \u0437\u0430\u0434\u0430\u043d\u0438\u044f, \u0431\u0435\u0437 \u0444\u043e\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u0439. \u041f\u0440\u0438 \u043a\u043e\u043d\u0444\u043b\u0438\u043a\u0442\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u044f\u044e\u0442\u0441\u044f \u043e\u0431\u0435 \u0432\u0435\u0440\u0441\u0438\u0438 \u0432 \u0440\u0435\u0437\u0435\u0440\u0432\u043d\u043e\u0439 \u043a\u043e\u043f\u0438\u0438.", "Same Wi-Fi. Jobs only, no photos. Conflicts are backed up.", "Gleiches WLAN. Nur Aufgaben, keine Fotos. Konflikte werden gesichert.", "Viens Wi-Fi. Tikai darbi, bez foto. Konflikti tiek saglab\u0101ti."), 15));
+        button(local("\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u0441\u0435\u0440\u0432\u0435\u0440", "Start server", "Server starten", "Izveidot serveri"), this::startSync);
+        button(local("\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f", "Connect", "Verbinden", "Piesl\u0113gties"), this::connectSync);
+        button(local("\u041e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0441\u0435\u0440\u0432\u0435\u0440", "Stop server", "Server stoppen", "Aptur\u0113t serveri"), () -> { stopSync(); showSync(); });
+    }
+    private void stopSync() {
+        java.net.ServerSocket s = syncServer; syncServer = null;
+        if (s != null) try { s.close(); } catch (Exception ignored) {}
+    }
+    @Override protected void onDestroy() { stopSync(); super.onDestroy(); }
+    private String jobKey(JSONObject j) {
+        return j.optString("turbine").trim().toLowerCase(Locale.ROOT) + "\n" + j.optString("name").trim().toLowerCase(Locale.ROOT);
+    }
+    private JSONArray syncSnapshot() throws Exception {
+        JSONArray a = new JSONArray();
+        for (JSONObject j : jobs) {
+            JSONObject c = new JSONObject(j.toString()); c.remove("photos"); a.put(c);
+        }
+        return a;
+    }
+    private int mergeSync(JSONArray incoming) throws Exception {
+        JSONArray backup = new JSONArray(); for (JSONObject j : jobs) backup.put(j);
+        ArrayList<JSONObject> next = new ArrayList<>();
+        for (JSONObject j : jobs) next.add(new JSONObject(j.toString()));
+        java.util.HashMap<String, JSONObject> index = new java.util.HashMap<>();
+        for (JSONObject j : next) index.put(jobKey(j), j);
+        int conflicts = 0;
+        for (int i=0; i<incoming.length(); i++) {
+            JSONObject r = incoming.getJSONObject(i);
+            if (r.optString("turbine").trim().isEmpty() || r.optString("name").trim().isEmpty()) throw new java.io.IOException("Invalid job");
+            JSONObject l = index.get(jobKey(r));
+            if (l == null) {
+                JSONObject n = new JSONObject();
+                for (String k : new String[]{"turbine","name","date","description"}) n.put(k,r.optString(k));
+                n.put("done",r.optBoolean("done")); n.put("photos",new JSONArray()); next.add(n); index.put(jobKey(n),n);
+            } else {
+                boolean different = l.optBoolean("done") != r.optBoolean("done") || !l.optString("date").equals(r.optString("date")) || !l.optString("description").equals(r.optString("description"));
+                if (different) conflicts++;
+            }
+        }
+        if (!storage.edit().putString("sync_backup",backup.toString()).putString("sync_incoming",incoming.toString()).putString("jobs",new JSONArray(next).toString()).commit()) throw new java.io.IOException("Save failed");
+        jobs.clear(); jobs.addAll(next); return conflicts;
+    }
+    private void syncResult(JSONArray incoming) {
+        try { int n = mergeSync(incoming); message(local("\u041e\u0431\u043c\u0435\u043d \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d. \u041a\u043e\u043d\u0444\u043b\u0438\u043a\u0442\u044b: ", "Exchange complete. Conflicts: ", "Austausch fertig. Konflikte: ", "Apmai\u0146a pabeigta. Konflikti: ") + n); }
+        catch(Exception e) { message("Sync: " + e.getMessage()); }
+    }
+    private void writeSync(java.io.DataOutputStream out, String s) throws Exception {
+        byte[] b=s.getBytes(java.nio.charset.StandardCharsets.UTF_8); if(b.length>SYNC_LIMIT) throw new java.io.IOException("Too large"); out.writeInt(b.length); out.write(b); out.flush();
+    }
+    private String readSync(java.io.DataInputStream in) throws Exception {
+        int n=in.readInt(); if(n<0 || n>SYNC_LIMIT) throw new java.io.IOException("Invalid size"); byte[] b=new byte[n]; in.readFully(b); return new String(b,java.nio.charset.StandardCharsets.UTF_8);
+    }
+    private String syncAddresses() throws Exception {
+        StringBuilder b=new StringBuilder(); java.util.Enumeration<java.net.NetworkInterface> ns=java.net.NetworkInterface.getNetworkInterfaces();
+        while(ns.hasMoreElements()) { java.net.NetworkInterface ni=ns.nextElement(); if(!ni.isUp() || ni.isLoopback()) continue; java.util.Enumeration<java.net.InetAddress> as=ni.getInetAddresses(); while(as.hasMoreElements()) { java.net.InetAddress a=as.nextElement(); if(a instanceof java.net.Inet4Address && a.isSiteLocalAddress()) b.append(a.getHostAddress()).append("\n"); }} return b.toString();
+    }
+    private void startSync() {
+        if(syncBusy || syncServer!=null) return;
+        try {
+            final String snapshot=syncSnapshot().toString();
+            final String pin=String.format(Locale.US,"%08d",new java.security.SecureRandom().nextInt(100000000));
+            final java.net.ServerSocket server=new java.net.ServerSocket(); server.bind(new java.net.InetSocketAddress(SYNC_PORT)); server.setSoTimeout(120000); syncServer=server;
+            new AlertDialog.Builder(this).setTitle("Wi-Fi GRID").setMessage("IP:\n"+syncAddresses()+"PIN: "+pin+"\n120 sec").setPositiveButton("OK",null).show();
+            new Thread(() -> {
+                try (java.net.ServerSocket ss=server; java.net.Socket socket=ss.accept()) {
+                    socket.setSoTimeout(15000);
+                    java.io.DataInputStream in=new java.io.DataInputStream(socket.getInputStream()); java.io.DataOutputStream out=new java.io.DataOutputStream(socket.getOutputStream());
+                    if(!pin.equals(readSync(in))) throw new java.io.IOException("Wrong PIN");
+                    JSONArray incoming=new JSONArray(readSync(in)); writeSync(out,snapshot);
+                    runOnUiThread(() -> { if(syncServer==server) syncResult(incoming); });
+                } catch(Exception e) { runOnUiThread(() -> { if(syncServer==server) message("Sync: "+e.getMessage()); }); }
+                finally { runOnUiThread(() -> { if(syncServer==server) syncServer=null; }); }
+            }).start();
+        } catch(Exception e) { stopSync(); message("Sync: "+e.getMessage()); }
+    }
+    private void connectSync() {
+        if(syncBusy || syncServer!=null) return;
+        LinearLayout form=new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
+        EditText ip=new EditText(this); ip.setHint("IP (192.168.x.x)"); ip.setSingleLine(true); form.addView(ip);
+        EditText pin=new EditText(this); pin.setHint("PIN"); pin.setInputType(2); form.addView(pin);
+        new AlertDialog.Builder(this).setTitle("Wi-Fi GRID").setView(form).setNegativeButton(local("\u041e\u0442\u043c\u0435\u043d\u0430","Cancel","Abbrechen","Atcelt"),null).setPositiveButton("OK",(d,w)-> {
+            final String host=ip.getText().toString().trim(), code=pin.getText().toString().trim();
+            if(!host.matches("[0-9.]{7,15}") || !code.matches("[0-9]{8}")) { message("Invalid IP / PIN"); return; }
+            try {
+                final String snapshot=syncSnapshot().toString(); syncBusy=true;
+                new Thread(()-> {
+                    try(java.net.Socket s=new java.net.Socket()) {
+                        java.net.InetAddress addr=java.net.InetAddress.getByName(host); if(!addr.isSiteLocalAddress()) throw new java.io.IOException("Local IP only");
+                        s.connect(new java.net.InetSocketAddress(addr,SYNC_PORT),5000); s.setSoTimeout(15000);
+                        java.io.DataOutputStream out=new java.io.DataOutputStream(s.getOutputStream()); java.io.DataInputStream in=new java.io.DataInputStream(s.getInputStream());
+                        writeSync(out,code); writeSync(out,snapshot); JSONArray incoming=new JSONArray(readSync(in)); runOnUiThread(()->syncResult(incoming));
+                    } catch(Exception e) { runOnUiThread(()->message("Sync: "+e.getMessage())); }
+                    finally { runOnUiThread(()->syncBusy=false); }
+                }).start();
+            } catch(Exception e) { syncBusy=false; message("Sync: "+e.getMessage()); }
+        }).show();
     }
 
     private void saveJobs() {
