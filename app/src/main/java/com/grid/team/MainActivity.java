@@ -202,7 +202,8 @@ public class MainActivity extends Activity {
         layout.addView(sub);
         button(tr("\u0422\u0423\u0420\u0411\u0418\u041d\u042b"), this::showTurbines);
         button(tr("\u0420\u0410\u0411\u041e\u0422\u042b"), this::showJobs);
-        button(local("\u041f\u041e\u0418\u0421\u041a", "SEARCH", "SUCHE", "MEKL\u0112\u0160ANA"), () -> showSearch("", 0));button(tr("\u0414\u041e\u0411\u0410\u0412\u0418\u0422\u042c \u0420\u0410\u0411\u041e\u0422\u0423"), () -> editJob(-1));
+        button(local("\u041f\u041e\u0418\u0421\u041a", "SEARCH", "SUCHE", "MEKL\u0112\u0160ANA"), () -> showSearch("", 0));
+        button(tr("\u0414\u041e\u0411\u0410\u0412\u0418\u0422\u042c \u0420\u0410\u0411\u041e\u0422\u0423"), () -> editJob(-1));
         int nc = 0, done = 0;
         for (JSONObject j : jobs) { if (hasNc(j)) nc++; else if (j.optBoolean("done")) done++; }
         layout.addView(text(local("\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e", "Completed", "Erledigt", "Pabeigts") + ": " + done + " / " + jobs.size() + "   NC: " + nc + "   " + local("\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c \u0431\u0435\u0437 NC", "Pending without NC", "Offen ohne NC", "Atliku\u0161i bez NC") + ": " + (jobs.size()-done-nc), 16));
@@ -551,6 +552,47 @@ public class MainActivity extends Activity {
         }
     }
 
+
+    private void showSearch(String query, int filter) {
+        selectedTurbine = null;
+        jobsReturn = () -> showSearch(query, filter);
+        page(local("\u041f\u041e\u0418\u0421\u041a", "SEARCH", "SUCHE", "MEKL\u0112\u0160ANA"), this::showHome);
+        EditText input = field(local("\u0420\u0430\u0431\u043e\u0442\u0430, \u0442\u0443\u0440\u0431\u0438\u043d\u0430, \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a, NC", "Job, turbine, employee, NC", "Arbeit, Turbine, Mitarbeiter, NC", "Darbs, turb\u012bna, darbinieks, NC"), query);
+        input.setSingleLine(true);
+        String[] filters = {local("\u0412\u0441\u0435", "All", "Alle", "Visi"), local("\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u044b\u0435", "Completed", "Erledigt", "Pabeigti"), local("\u041d\u0435\u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d\u043d\u044b\u0435", "Pending", "Offen", "Nepabeigti"), local("\u041f\u0440\u043e\u0431\u043b\u0435\u043c\u044b NC", "NC issues", "NC-Probleme", "NC probl\u0113mas")};
+        button(local("\u0424\u0438\u043b\u044c\u0442\u0440: ", "Filter: ", "Filter: ", "Filtrs: ") + filters[filter], () ->
+            new AlertDialog.Builder(this).setItems(filters, (d, w) -> showSearch(input.getText().toString(), w)).show());
+        Runnable search = () -> {
+            ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(input.getWindowToken(), 0);
+            showSearch(input.getText().toString(), filter);
+        };
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        input.setOnEditorActionListener((v, action, event) -> {
+            if (action == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) { search.run(); return true; }
+            return false;
+        });
+        button(local("\u041d\u0430\u0439\u0442\u0438", "Find", "Suchen", "Mekl\u0113t"), search);
+        button(local("\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c", "Reset", "Zur\u00fccksetzen", "Not\u012br\u012bt"), () -> showSearch("", 0));
+        ArrayList<Integer> matches = new ArrayList<>();
+        String[] words = query.trim().toLowerCase(Locale.ROOT).split("\\s+");
+        for (int i = 0; i < jobs.size(); i++) {
+            JSONObject j = jobs.get(i);
+            boolean nc = hasNc(j), done = j.optBoolean("done") && !nc;
+            if ((filter == 1 && !done) || (filter == 2 && (done || nc)) || (filter == 3 && !nc)) continue;
+            StringBuilder hay = new StringBuilder();
+            for (String key : new String[]{"name", "turbine", "description", "completedBy", "ncBy", "nc"}) hay.append(j.optString(key)).append(' ');
+            String value = hay.toString().toLowerCase(Locale.ROOT);
+            boolean match = true;
+            for (String word : words) if (!value.contains(word)) { match = false; break; }
+            if (match) matches.add(i);
+        }
+        layout.addView(text(local("\u041d\u0430\u0439\u0434\u0435\u043d\u043e: ", "Found: ", "Gefunden: ", "Atrasts: ") + matches.size(), 17));
+        for (int index : matches) {
+            JSONObject j = jobs.get(index);
+            button(j.optString("turbine") + "\n" + j.optString("name") + completionInfo(j) + ncInfo(j), () -> jobOptions(index), j.optBoolean("done"), hasNc(j));
+        }
+    }
+
     private void showJobs() {
         jobsReturn = this::showJobs;
         if (selectedTurbine != null) { showTurbineJobs(selectedTurbine); return; }
@@ -635,7 +677,7 @@ public class MainActivity extends Activity {
                 j.put("done", old.optBoolean("done", false));
                 if (old.optBoolean("done") && old.optLong("completedAt", 0) > 0) j.put("completedAt", old.optLong("completedAt"));
                 if (old.optBoolean("done")) for (String k : new String[]{"completedBy", "completedById"}) if (old.has(k)) j.put(k, old.optString(k));
-                for (String k : new String[]{"nc", "ncAt", "ncBy"}) if (old.has(k)) j.put(k, old.get(k));
+                for (String k : new String[]{"nc", "ncAt", "ncBy", "ncPhotos"}) if (old.has(k)) j.put(k, old.get(k));
                 JSONArray array = new JSONArray();
                 for (String uri : draftPhotos) array.put(uri);
                 j.put("photos", array);
