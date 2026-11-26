@@ -74,7 +74,7 @@ import {initializeApp} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-
 import {getAuth,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js';
 import {getFirestore,collection,doc,setDoc,updateDoc,getDocFromServer,onSnapshot} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
 const firebaseConfig={apiKey:'AIzaSyCKUc3-52tQW8LC_plL07UYDqOoR4kkw0Q',authDomain:'grid-30080.firebaseapp.com',projectId:'grid-30080',storageBucket:'grid-30080.firebasestorage.app',messagingSenderId:'1071203220625',appId:'1:1071203220625:web:1fe3328d166829f9919330'};
-const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app,'default');
 const screen=document.getElementById('screen');
 let jobs=[],user=null,unsubscribe=null,ready=false,view=()=>home(),lang=localStorage.getItem('gridLang')||'ru';
 let importing=false,importProgress='';
@@ -101,7 +101,7 @@ function home(){
     btn('Импорт старых работ из этого браузера',importLocal);
   }
   btn('Выйти',()=>signOut(auth));
-  text('GRID TEAM · Firebase · Импорт v2 · iPhone & Android');
+  text('GRID TEAM · Firebase (база default) · Импорт v3 · iPhone & Android');
 }
 function turbines(){clear();back();[...new Set(jobs.map(j=>j.turbine))].forEach(n=>{const a=jobs.filter(j=>j.turbine===n);btn(n+' ('+a.filter(j=>j.done&&!j.nc).length+'/'+a.length+')',()=>show(()=>list(n)))})}
 function list(n=null,nc=false,q=''){clear();back();jobs.forEach(j=>{if(n!==null&&j.turbine!==n)return;if(nc&&!j.nc)return;if(q&&!(j.turbine+' '+j.name+' '+(j.description||'')).toLowerCase().includes(q.toLowerCase()))return;btn((j.done?'✓ ':'○ ')+j.turbine+' — '+j.name+(j.nc?' · NC: '+j.nc:''),()=>show(()=>details(j.id)),j.nc?'nc':j.done?'done':'')});btn('+ '+t(2),()=>show(()=>edit(null,n||'')))}
@@ -196,7 +196,7 @@ async function importJobsFromArray(raw,source){
       const code=e&&e.code?String(e.code):'Ошибка';
       const message=e&&e.message?String(e.message):String(e);
       let advice='';
-      if(code==='not-found')advice='Проверь в Firebase Console, что существует база Cloud Firestore и правильно выбран её идентификатор (обычно (default)).';
+      if(code==='not-found')advice='Проверь идентификатор базы Firestore: этот сайт обращается к базе с ID default (без круглых скобок).';
       else if(code==='permission-denied')advice='Проверь правила доступа к /tasks и наличие твоего UID в /members.';
       else if(code==='unavailable')advice='Проверь интернет и попробуй позже.';
       alert('Импорт остановился на задании '+at+' из '+pending.length+'.'+
