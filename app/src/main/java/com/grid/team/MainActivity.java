@@ -43,6 +43,7 @@ public class MainActivity extends Activity {    private TextView weatherText;
     private LocationManager locationManager;
     private static final int LOCATION_PERMISSION = 501;
     private static final int PICK_PHOTOS = 201;
+    private static final int EXPORT_JOBS_JSON = 204;
     private final ArrayList<JSONObject> jobs = new ArrayList<>();
     private final ArrayList<String> draftPhotos = new ArrayList<>();
     private SharedPreferences storage;
@@ -396,6 +397,7 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
             button(name, () -> showTurbineJobs(name));
             progress(c[1], c[0]);
         }
+        button(local("КОРЗИНА / ВОССТАНОВИТЬ", "TRASH / RESTORE", "PAPIERKORB / WIEDERHERSTELLEN", "ATKRITNE / ATJAUNOT"), this::showTrash);
         button(local("+ \u0428\u0430\u0431\u043b\u043e\u043d \u0440\u0430\u0431\u043e\u0442", "+ Job template", "+ Arbeitsvorlage", "+ Darbu veidne"), this::importTemplate);
     }
 
@@ -419,6 +421,7 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
         }
         progress(done, total);
         button(local("\u0421\u041e\u0417\u0414\u0410\u0422\u042c PDF", "CREATE PDF REPORT", "PDF-BERICHT ERSTELLEN", "IZVEIDOT PDF"), () -> exportReport(name));
+        button(local("🗑 УДАЛИТЬ ТУРБИНУ В КОРЗИНУ", "MOVE TURBINE TO TRASH", "TURBINE IN PAPIERKORB", "DZĒST TURBĪNU ATKRITNĒ"), () -> confirmTrashTurbine(name));
         int ncCount = 0;
         for (JSONObject j : jobs) if (name.equalsIgnoreCase(j.optString("turbine").trim()) && hasNc(j)) ncCount++;
         layout.addView(text("NC: " + ncCount, 16));
@@ -800,6 +803,10 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == EXPORT_JOBS_JSON) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) writeJobsJson(data.getData());
+            return;
+        }
         if (requestCode == QR_SCAN_REQUEST) {
             com.google.zxing.integration.android.IntentResult result =
                 com.google.zxing.integration.android.IntentIntegrator.parseActivityResult(resultCode, data);
@@ -930,7 +937,7 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
                     new AlertDialog.Builder(this).setMessage(tr("\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u044d\u0442\u0443 \u0440\u0430\u0431\u043e\u0442\u0443?"))
                         .setNegativeButton(tr("\u041e\u0442\u043c\u0435\u043d\u0430"), null)
                         .setPositiveButton(tr("\u0423\u0434\u0430\u043b\u0438\u0442\u044c"), (d, w) -> {
-                            jobs.remove(index); saveJobs(); returnToJobs.run();
+                            moveJobToTrash(index, returnToJobs);
                         }).show();
                 }
             }).show();
@@ -949,6 +956,29 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
         button(local("Сканировать QR-код", "Scan QR code", "QR-Code scannen", "Skenēt QR kodu"), this::scanSyncQr);
         button(local("\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f", "Connect", "Verbinden", "Piesl\u0113gties"), this::connectSync);
         button(local("\u041e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0441\u0435\u0440\u0432\u0435\u0440", "Stop server", "Server stoppen", "Aptur\u0113t serveri"), () -> { stopSync(); showSync(); });
+        button(local("ЭКСПОРТ РАБОТ (JSON)", "EXPORT JOBS (JSON)", "ARBEITEN EXPORTIEREN (JSON)", "EKSPORTĒT DARBUS (JSON)"), this::exportJobsJson);
+    }
+    // One-time, read-only backup of the exact jobs JSON stored in SharedPreferences.
+    // Photos are represented by Android content:// URI strings, not image bytes.
+    private void exportJobsJson() {
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/json");
+        intent.putExtra(Intent.EXTRA_TITLE, "GRID_jobs_backup.json");
+        startActivityForResult(intent, EXPORT_JOBS_JSON);
+    }
+    private void writeJobsJson(Uri destination) {
+        try {
+            // Use persisted string so export is a faithful backup, not a transformed list.
+            String json = storage.getString("jobs", "[]");
+            new JSONArray(json); // Validate before writing.
+            try (java.io.OutputStream out = getContentResolver().openOutputStream(destination, "w")) {
+                if (out == null) throw new java.io.IOException("Cannot open export file");
+                out.write(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                out.flush();
+            }
+            message(local("Работы сохранены в JSON", "Jobs exported to JSON", "Arbeiten als JSON exportiert", "Darbi eksportēti JSON"));
+        } catch (Exception e) { message("Export: " + e.getMessage()); }
     }
     private void stopSync() {
         java.net.ServerSocket s = syncServer; syncServer = null;
@@ -1025,8 +1055,18 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
         java.util.HashMap<String, JSONObject> index = new java.util.HashMap<>();
         for (JSONObject j : next) index.put(jobKey(j), j);
         int conflicts = 0;
+        java.util.HashSet<String> deletedLocal=new java.util.HashSet<>();
+        try {
+            JSONArray trash=readTrash();
+            for(int ti=0;ti<trash.length();ti++) {
+                JSONArray deleted=trash.getJSONObject(ti).optJSONArray("jobs");
+                if(deleted==null)continue;
+                for(int di=0;di<deleted.length();di++)deletedLocal.add(safeJobKey(deleted.getJSONObject(di)));
+            }
+        } catch(Exception error) { throw new java.io.IOException("Cannot read trash; sync stopped safely",error); }
         for (int i=0; i<incoming.length(); i++) {
             JSONObject r = incoming.getJSONObject(i);
+            if(deletedLocal.contains(safeJobKey(r))) continue;
             if (r.optString("turbine").trim().isEmpty() || r.optString("name").trim().isEmpty()) throw new java.io.IOException("Invalid job");
             JSONObject l = index.get(jobKey(r));
             if (l == null) {
@@ -1164,6 +1204,109 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
                 }).start();
             } catch(Exception e) { syncBusy=false; message("Sync: "+e.getMessage()); }
      }
+    // GRID vNext: safety-first local recycle bin. No Firebase writes happen here.
+    // The old APK, old Wi-Fi sync and current Firestore database remain untouched.
+    private JSONArray readTrash() throws Exception {
+        return new JSONArray(storage.getString("grid_trash_v1", "[]"));
+    }
+    private String safeJobKey(JSONObject job) {
+        return job.optString("turbine").trim().toLowerCase(Locale.ROOT) + "\n" +
+               job.optString("name").trim().toLowerCase(Locale.ROOT);
+    }
+    private boolean saveJobsAndTrash(ArrayList<JSONObject> next, JSONArray trash) {
+        JSONArray all = new JSONArray();
+        for (JSONObject item : next) all.put(item);
+        if (!storage.edit().putString("jobs", all.toString())
+                .putString("grid_trash_v1", trash.toString()).commit()) {
+            message(local("Ошибка сохранения: данные не изменены", "Save failed; no changes made",
+                "Speichern fehlgeschlagen", "Saglabāšana neizdevās"));
+            return false;
+        }
+        jobs.clear(); jobs.addAll(next);
+        return true;
+    }
+    private void moveJobToTrash(int index, Runnable returnAfter) {
+        if (index < 0 || index >= jobs.size()) return;
+        try {
+            JSONObject entry = new JSONObject();
+            entry.put("kind", "job"); entry.put("name", jobs.get(index).optString("name"));
+            entry.put("at", System.currentTimeMillis());
+            JSONArray payload = new JSONArray(); payload.put(new JSONObject(jobs.get(index).toString()));
+            entry.put("jobs", payload);
+            JSONArray trash = readTrash(); trash.put(entry);
+            ArrayList<JSONObject> next = new ArrayList<>(jobs); next.remove(index);
+            if (saveJobsAndTrash(next, trash)) returnAfter.run();
+        } catch(Exception e) { message("Trash: " + e.getMessage()); }
+    }
+    private void confirmTrashTurbine(String turbine) {
+        int count = 0;
+        for (JSONObject j : jobs) if (turbine.equalsIgnoreCase(j.optString("turbine").trim())) count++;
+        final int n = count;
+        final EditText check = new EditText(this);
+        check.setHint(turbine);
+        new AlertDialog.Builder(this)
+            .setTitle(local("Удалить турбину в корзину?", "Move turbine to trash?", "Turbine in Papierkorb?", "Pārvietot turbīnu uz atkritni?"))
+            .setMessage(turbine + " — " + n + " " + local("работ. Для подтверждения введи точное имя турбины. Восстановление доступно из корзины.",
+                "jobs. Type the turbine name exactly to confirm; you can restore from Trash.",
+                "Aufgaben. Namen zur Bestätigung eingeben.", "darbi. Ievadi turbīnas nosaukumu."))
+            .setView(check).setNegativeButton(local("Отмена","Cancel","Abbrechen","Atcelt"),null)
+            .setPositiveButton(local("В корзину","Move to trash","In Papierkorb","Uz atkritni"),(d,w)-> {
+                if (!turbine.equals(check.getText().toString().trim())) {
+                    message(local("Имя не совпадает. Ничего не удалено.","Name did not match. Nothing deleted.","Name stimmt nicht überein.","Nosaukums nesakrīt.")); return;
+                }
+                try {
+                    JSONArray payload = new JSONArray();
+                    ArrayList<JSONObject> next = new ArrayList<>();
+                    for (JSONObject job : jobs) {
+                        if (turbine.equalsIgnoreCase(job.optString("turbine").trim())) payload.put(new JSONObject(job.toString()));
+                        else next.add(job);
+                    }
+                    if (payload.length() == 0) return;
+                    JSONObject entry = new JSONObject();
+                    entry.put("kind","turbine"); entry.put("name",turbine);
+                    entry.put("at",System.currentTimeMillis()); entry.put("jobs",payload);
+                    JSONArray trash = readTrash(); trash.put(entry);
+                    if(saveJobsAndTrash(next,trash)) showTurbines();
+                } catch(Exception e) { message("Trash: " + e.getMessage()); }
+            }).show();
+    }
+    private void showTrash() {
+        page(local("КОРЗИНА", "TRASH", "PAPIERKORB", "ATKRITNE"), this::showTurbines);
+        try {
+            JSONArray trash=readTrash();
+            if(trash.length()==0) layout.addView(text(local("Корзина пуста", "Trash is empty", "Papierkorb ist leer", "Atkritne ir tukša"),16));
+            for(int i=trash.length()-1; i>=0; i--) {
+                final int index=i;
+                JSONObject entry=trash.getJSONObject(i);
+                String title=entry.optString("name")+" ("+entry.optJSONArray("jobs").length()+")";
+                button(local("ВОССТАНОВИТЬ: ","RESTORE: ","WIEDERHERSTELLEN: ","ATJAUNOT: ")+title,()->restoreTrashItem(index));
+            }
+        } catch(Exception e) { message("Trash: " + e.getMessage()); }
+    }
+    private void restoreTrashItem(int index) {
+        try {
+            JSONArray trash=readTrash();
+            if (index<0 || index>=trash.length())return;
+            JSONObject entry=trash.getJSONObject(index);
+            JSONArray from=entry.getJSONArray("jobs");
+            java.util.HashSet<String> existing=new java.util.HashSet<>();
+            ArrayList<JSONObject> next=new ArrayList<>(jobs);
+            for(JSONObject j:jobs) existing.add(safeJobKey(j));
+            int count=0, skipped=0;
+            for(int i=0;i<from.length();i++){
+                JSONObject j=from.getJSONObject(i);
+                if (!existing.add(safeJobKey(j))) { skipped++; continue; }
+                next.add(new JSONObject(j.toString())); count++;
+            }
+            JSONArray rest=new JSONArray();
+            for(int i=0;i<trash.length();i++)if(i!=index)rest.put(trash.getJSONObject(i));
+            if(saveJobsAndTrash(next,rest)){
+                message(local("Восстановлено: ","Restored: ","Wiederhergestellt: ","Atjaunots: ")+count+", skipped: "+skipped);
+                showTrash();
+            }
+        } catch(Exception e) {message("Restore: "+e.getMessage());}
+    }
+
     private void saveJobs() {
         JSONArray a = new JSONArray();
         for (JSONObject j : jobs) a.put(j);
