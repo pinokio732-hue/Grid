@@ -72,7 +72,7 @@ GRID
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js';
 import {getAuth,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js';
-import {getFirestore,collection,doc,setDoc,updateDoc,onSnapshot,runTransaction} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
+import {getFirestore,collection,doc,setDoc,updateDoc,getDocFromServer,onSnapshot} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
 const firebaseConfig={apiKey:'AIzaSyCKUc3-52tQW8LC_plL07UYDqOoR4kkw0Q',authDomain:'grid-30080.firebaseapp.com',projectId:'grid-30080',storageBucket:'grid-30080.firebasestorage.app',messagingSenderId:'1071203220625',appId:'1:1071203220625:web:1fe3328d166829f9919330'};
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
 const screen=document.getElementById('screen');
@@ -101,7 +101,7 @@ function home(){
     btn('Импорт старых работ из этого браузера',importLocal);
   }
   btn('Выйти',()=>signOut(auth));
-  text('GRID TEAM · Firebase · iPhone & Android');
+  text('GRID TEAM · Firebase · Импорт v2 · iPhone & Android');
 }
 function turbines(){clear();back();[...new Set(jobs.map(j=>j.turbine))].forEach(n=>{const a=jobs.filter(j=>j.turbine===n);btn(n+' ('+a.filter(j=>j.done&&!j.nc).length+'/'+a.length+')',()=>show(()=>list(n)))})}
 function list(n=null,nc=false,q=''){clear();back();jobs.forEach(j=>{if(n!==null&&j.turbine!==n)return;if(nc&&!j.nc)return;if(q&&!(j.turbine+' '+j.name+' '+(j.description||'')).toLowerCase().includes(q.toLowerCase()))return;btn((j.done?'✓ ':'○ ')+j.turbine+' — '+j.name+(j.nc?' · NC: '+j.nc:''),()=>show(()=>details(j.id)),j.nc?'nc':j.done?'done':'')});btn('+ '+t(2),()=>show(()=>edit(null,n||'')))}
@@ -167,29 +167,44 @@ async function importJobsFromArray(raw,source){
     if(!confirm(question.replaceAll('\\n','\n')))return;
     if(!pending.length){alert('Все '+prepared.length+' заданий уже есть в Firebase. Дубликатов не создано.');return;}
     importing=true;let added=0,already=skipped;
+    let step='Подготовка',at=0;
     try{
-      for(let i=0;i<pending.length;i+=35){
+      // Read the actual server version before each write. No multi-document transaction:
+      // each job is checked and committed individually, so a failed request does not
+      // discard successful earlier jobs. Deterministic IDs make retries safe.
+      for(let i=0;i<pending.length;i++){
         if(!user)throw new Error('Выход из аккаунта во время импорта.');
-        const chunk=pending.slice(i,i+35);
-        importProgress='Загрузка в Firebase: '+(i+1)+'–'+Math.min(i+35,pending.length)+' из '+pending.length;
+        const e=pending[i];at=i+1;
+        importProgress='Загрузка в Firebase: '+at+' из '+pending.length+' · записано: '+added;
         if(view)show(home);
-        // Transaction only creates missing IDs. A retry never resets a completed job.
-        const result=await runTransaction(db,async tx=>{
-          const snapshots=await Promise.all(chunk.map(e=>tx.get(doc(db,'tasks',e.id))));
-          let created=0;
-          chunk.forEach((e,index)=>{
-            if(!snapshots[index].exists()){
-              tx.set(doc(db,'tasks',e.id),dataForCloud(e.item));created++;
-            }
-          });
-          return created;
-        });
-        added+=result;already+=chunk.length-result;
+        const ref=doc(db,'tasks',e.id);
+        step='Проверка задания №'+at;
+        const existing=await getDocFromServer(ref);
+        if(existing.exists()){
+          already++;
+          continue;
+        }
+        step='Сохранение задания №'+at;
+        // The ID is stable across imports; the preceding server read prevents
+        // rewriting tasks already present on a normal resume.
+        await setDoc(ref,dataForCloud(e.item));
+        added++;
       }
       alert('Готово! Загружено: '+added+'. Уже были в Firebase: '+already+'. Всего в файле: '+prepared.length+'.');
     }catch(e){
-      console.error(e);
-      alert('Импорт остановился. Подтверждено новых: '+added+'. '+(e.code||e.message||e)+'\\nМожно повторить импорт: существующие работы не перезапишутся.');
+      console.error('GRID import',step,e);
+      const code=e&&e.code?String(e.code):'Ошибка';
+      const message=e&&e.message?String(e.message):String(e);
+      let advice='';
+      if(code==='not-found')advice='Проверь в Firebase Console, что существует база Cloud Firestore и правильно выбран её идентификатор (обычно (default)).';
+      else if(code==='permission-denied')advice='Проверь правила доступа к /tasks и наличие твоего UID в /members.';
+      else if(code==='unavailable')advice='Проверь интернет и попробуй позже.';
+      alert('Импорт остановился на задании '+at+' из '+pending.length+'.'+
+            '\nПодтверждено новых: '+added+'.'+
+            '\nЭтап: '+step+'.'+
+            '\nКод Firebase: '+code+'.'+
+            '\nПодробности: '+message+(advice?'\n'+advice:'')+
+            '\nРезервная копия не изменена. Импорт можно повторить: уже найденные в Firebase задания пропускаются.');
     }finally{
       importing=false;importProgress='';show(home);
     }
