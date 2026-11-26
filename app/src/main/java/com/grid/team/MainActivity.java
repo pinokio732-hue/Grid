@@ -1565,7 +1565,8 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
             JSONArray remaining=new JSONArray();
             java.util.HashMap<String,String> originals=new java.util.HashMap<>();
             for(int i=0;i<sent.length();i++){
-                JSONObject entry=sent.getJSONObject(i),id=entry.getString("id");
+                JSONObject entry=sent.getJSONObject(i);
+                String id=entry.getString("id");
                 if(committed.containsKey(id))originals.put(id,entry.toString());
             }
             JSONObject meta=new JSONObject(storage.getString("grid_cloud_meta","{}"));
