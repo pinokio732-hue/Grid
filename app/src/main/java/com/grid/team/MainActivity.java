@@ -166,6 +166,18 @@ public class MainActivity extends Activity {    private TextView weatherText;
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    // Display the installed APK version, not a hard-coded release label.
+    private String appVersionLabel() {
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            String version = info.versionName == null || info.versionName.trim().isEmpty() ? "?" : info.versionName;
+            long build = android.os.Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
+            return "GRID APK  ·  v" + version + "  (build " + build + ")";
+        } catch (Exception ignored) {
+            return "GRID APK";
+        }
+    }
+
     private GradientDrawable glassShape(int radius, boolean field) {
         GradientDrawable shape = new GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
@@ -266,6 +278,14 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
         layout.setPadding(dp(4), dp(8), dp(4), dp(16));
         scroll.addView(layout);
         shell.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        // Keep a subtle version label visible under the scrolling home menu.
+        if ("GRID".equalsIgnoreCase(heading.trim())) {
+            TextView footer = text(appVersionLabel(), 10);
+            footer.setGravity(Gravity.CENTER);
+            footer.setTextColor(0xffC1D0DB);
+            footer.setPadding(dp(4), dp(2), dp(4), dp(8));
+            shell.addView(footer, new LinearLayout.LayoutParams(-1, -2));
+        }
         root.addView(shell, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
         // Soft fade and upward slide whenever a GRID page opens.
