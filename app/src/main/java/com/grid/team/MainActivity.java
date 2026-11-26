@@ -73,9 +73,10 @@ public class MainActivity extends Activity {    private TextView weatherText;
     @Override protected void onResume() {
         super.onResume(); weatherActive = true;
         weatherHandler.removeCallbacks(weatherTick); weatherHandler.post(weatherTick);
+        cloudStartTimer();
     }
     @Override protected void onPause() {
-        stopWeather(); super.onPause();
+        stopWeather(); cloudStopTimer(); super.onPause();
     }
     private void stopWeather() {
         weatherActive = false; weatherHandler.removeCallbacks(weatherTick);
@@ -178,6 +179,7 @@ public class MainActivity extends Activity {    private TextView weatherText;
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         storage = getSharedPreferences("grid_data", MODE_PRIVATE);
+        cloudEnabled=storage.getBoolean("grid_cloud_enabled",false);
         language = storage.getString("language", "ru");
         loadJobs();
         if (profileName().isEmpty()) showProfile(true); else showHome();
@@ -194,6 +196,7 @@ public class MainActivity extends Activity {    private TextView weatherText;
     }
 
     private void page(String heading, Runnable back) {
+        cloudUi="";
         backAction = back;
         buttonCount = 0;
         FrameLayout root = new FrameLayout(this);
@@ -340,7 +343,7 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
     private void showHome() {
         jobsReturn = this::showJobs;
         selectedTurbine = null;
-        page("GRID", null);
+        page("GRID", null); cloudUi="home";
         TextView sub = text("TEAM WORK MANAGEMENT", 15);
         sub.setGravity(Gravity.CENTER);
         layout.addView(sub);
@@ -355,6 +358,8 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
         button(tr("\u0424\u041e\u0422\u041e\u0413\u0420\u0410\u0424\u0418\u0418"), this::showGallery);
         button(tr("\u041a\u041e\u041c\u0410\u041d\u0414\u0410"), this::showTeam);
         button(tr("\u0421\u0418\u041d\u0425\u0420\u041e\u041d\u0418\u0417\u0410\u0426\u0418\u042f"), this::showSync);
+        button("☁ FIREBASE: " + (cloudEnabled ? "ON" : "OFF"),this::cloudSettings);
+        if(cloudEnabled)layout.addView(text(cloudState,14));
         button(tr("\u0428\u0410\u0411\u041b\u041e\u041d \u0420\u0410\u0411\u041e\u0422"), this::importTemplate);
         button(tr("\u042f\u0417\u042b\u041a / LANGUAGE"), this::chooseLanguage);
     }
@@ -381,7 +386,7 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
     private void showTurbines() {
         jobsReturn = this::showJobs;
         selectedTurbine = null;
-        page(local("\u0422\u0423\u0420\u0411\u0418\u041d\u042b", "TURBINES", "TURBINEN", "TURB\u012aNAS"), this::showHome);
+        page(local("\u0422\u0423\u0420\u0411\u0418\u041d\u042b", "TURBINES", "TURBINEN", "TURB\u012aNAS"), this::showHome); cloudUi="turbines";
         java.util.Map<String, int[]> counts = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (JSONObject job : jobs) {
             String name = job.optString("turbine").trim();
@@ -404,7 +409,7 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
     private void showTurbineJobs(String name) {
         jobsReturn = () -> showTurbineJobs(name);
         selectedTurbine = name;
-        page(name, this::showTurbines);
+        page(name, this::showTurbines); cloudUi="turbine";
         java.util.Map<String, ArrayList<Integer>> groups = new java.util.LinkedHashMap<>();
         int total = 0, done = 0;
         for (int i = 0; i < jobs.size(); i++) {
@@ -700,7 +705,7 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
     private void showJobs() {
         jobsReturn = this::showJobs;
         if (selectedTurbine != null) { showTurbineJobs(selectedTurbine); return; }
-        page(tr("\u0420\u0410\u0411\u041e\u0422\u042b GRID"), this::showHome);
+        page(tr("\u0420\u0410\u0411\u041e\u0422\u042b GRID"), this::showHome); cloudUi="jobs";
         button(tr("+ \u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0440\u0430\u0431\u043e\u0442\u0443"), () -> editJob(-1));
         if (jobs.isEmpty()) layout.addView(text(tr("\u041f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0440\u0430\u0431\u043e\u0442. \u0414\u043e\u0431\u0430\u0432\u044c \u043f\u0435\u0440\u0432\u0443\u044e!"), 17));
         for (int i = 0; i < jobs.size(); i++) {
@@ -749,6 +754,12 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
         EditText description = field(tr("\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u0440\u0430\u0431\u043e\u0442\u044b"), old.optString("description"));
         description.setMinLines(3);
         description.setGravity(Gravity.TOP);
+        EditText worker = field(local("Исполнитель (1–3 буквы)","Worker (1–3 letters)","Mitarbeiter (1–3 Buchstaben)","Darbinieks (1–3 burti)"),old.optString("worker",""));
+        android.widget.CheckBox corrected = new android.widget.CheckBox(this);
+        corrected.setText(local("Скорректировано","Corrected","Korrigiert","Labots"));
+        corrected.setTextColor(Color.WHITE);
+        corrected.setChecked(old.optBoolean("corrected",false));
+        layout.addView(corrected);
         button(tr("\ud83d\udcf7 \u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0444\u043e\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u0438"), this::pickPhotos);
         TextView photoCount = text(tr("\u041f\u0440\u0438\u043a\u0440\u0435\u043f\u043b\u0435\u043d\u043e \u0444\u043e\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u0439: ") + draftPhotos.size(), 16);
         layout.addView(photoCount);
@@ -772,14 +783,17 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
                 || name.getText().toString().trim().isEmpty()) {
                 message(tr("\u0417\u0430\u043f\u043e\u043b\u043d\u0438 \u0442\u0443\u0440\u0431\u0438\u043d\u0443 \u0438 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0440\u0430\u0431\u043e\u0442\u044b")); return;
             }
+            if(worker.getText().toString().trim().length()>3){message("Исполнитель: максимум 3 буквы");return;}
             try {
-                JSONObject j = new JSONObject();
+                JSONObject j = new JSONObject(old.toString());
+                j.put("worker",worker.getText().toString().trim());
+                j.put("corrected",corrected.isChecked());
                 j.put("turbine", turbine.getText().toString());
                 j.put("name", name.getText().toString());
                 j.put("date", date.getText().toString());
                 j.put("description", description.getText().toString());
                 j.put("done", old.optBoolean("done", false));
-                if (old.optBoolean("done") && old.optLong("completedAt", 0) > 0) j.put("completedAt", old.optLong("completedAt"));
+                if (old.optBoolean("done") && old.has("completedAt")) j.put("completedAt", old.get("completedAt"));
                 if (old.optBoolean("done")) for (String k : new String[]{"completedBy", "completedById"}) if (old.has(k)) j.put(k, old.optString(k));
                 for (String k : new String[]{"nc", "ncAt", "ncBy"}) if (old.has(k)) j.put(k, old.get(k));
                 JSONArray array = new JSONArray();
@@ -1214,16 +1228,18 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
                job.optString("name").trim().toLowerCase(Locale.ROOT);
     }
     private boolean saveJobsAndTrash(ArrayList<JSONObject> next, JSONArray trash) {
-        JSONArray all = new JSONArray();
-        for (JSONObject item : next) all.put(item);
-        if (!storage.edit().putString("jobs", all.toString())
-                .putString("grid_trash_v1", trash.toString()).commit()) {
-            message(local("Ошибка сохранения: данные не изменены", "Save failed; no changes made",
-                "Speichern fehlgeschlagen", "Saglabāšana neizdevās"));
-            return false;
-        }
-        jobs.clear(); jobs.addAll(next);
-        return true;
+        try {
+            if(cloudEnabled)for(JSONObject j:next)if(j.optString("cloudId","").isEmpty())
+                j.put("cloudId","grid_apk_"+java.util.UUID.randomUUID().toString().replace("-",""));
+            JSONArray all=new JSONArray();for(JSONObject j:next)all.put(j);
+            android.content.SharedPreferences.Editor editor=storage.edit().putString("jobs",all.toString())
+                .putString("grid_trash_v1",trash.toString());
+            if(cloudEnabled)editor.putString("grid_cloud_pending",cloudBuildPending(storage.getString("jobs","[]"),all).getJSONArray("pending").toString());
+            if(!editor.commit())throw new java.io.IOException("Cannot save GRID data");
+            jobs.clear();jobs.addAll(next);
+            if(cloudEnabled)cloudHandler.postDelayed(this::cloudSyncNow,1000L);
+            return true;
+        }catch(Exception e){message("GRID: "+e.getMessage());return false;}
     }
     private void moveJobToTrash(int index, Runnable returnAfter) {
         if (index < 0 || index >= jobs.size()) return;
@@ -1239,6 +1255,10 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
         } catch(Exception e) { message("Trash: " + e.getMessage()); }
     }
     private void confirmTrashTurbine(String turbine) {
+        if(cloudEnabled) {
+            message("Удаление целой турбины в облаке пока заблокировано до настройки прав администратора.");
+            return;
+        }
         int count = 0;
         for (JSONObject j : jobs) if (turbine.equalsIgnoreCase(j.optString("turbine").trim())) count++;
         final int n = count;
@@ -1308,9 +1328,377 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
     }
 
     private void saveJobs() {
-        JSONArray a = new JSONArray();
-        for (JSONObject j : jobs) a.put(j);
-        storage.edit().putString("jobs", a.toString()).apply();
+        try {
+            cloudAssignIds();
+            JSONArray a = new JSONArray();
+            for (JSONObject j : jobs) a.put(j);
+            android.content.SharedPreferences.Editor editor=storage.edit().putString("jobs",a.toString());
+            if(cloudEnabled)editor.putString("grid_cloud_pending",cloudBuildPending(storage.getString("jobs","[]"),a).getJSONArray("pending").toString());
+            if(!editor.commit())throw new java.io.IOException("Cannot save GRID data");
+            if(cloudEnabled)cloudHandler.postDelayed(this::cloudSyncNow,1000L);
+        }catch(Exception e){message("Save: "+e.getMessage());}
+    }
+
+    // GRID CLOUD v1: Firestore REST client (no extra Gradle dependencies).
+    // Database ID is deliberately "default", NOT "(default)".
+    private static final String GRID_API_KEY = "AIzaSyCKUc3-52tQW8LC_plL07UYDqOoR4kkw0Q";
+    private static final String GRID_DB_ROOT = "https://firestore.googleapis.com/v1/projects/grid-30080/databases/default/documents";
+    private final android.os.Handler cloudHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private boolean cloudEnabled = false;
+    private boolean cloudBusy = false;
+    private String cloudToken = "";
+    private long cloudTokenUntil = 0L;
+    private String cloudState = "Не подключено";
+    private String cloudUi = "";
+    private final Runnable cloudTick = new Runnable() {
+        @Override public void run() {
+            if (cloudEnabled) cloudSyncNow();
+            if (cloudEnabled) cloudHandler.postDelayed(this, 12000L);
+        }
+    };
+
+    private void cloudStartTimer() {
+        cloudHandler.removeCallbacks(cloudTick);
+        if (cloudEnabled) cloudHandler.postDelayed(cloudTick, 1000L);
+    }
+    private void cloudStopTimer() { cloudHandler.removeCallbacks(cloudTick); }
+    private String cloudUrl(String value) throws Exception {
+        return java.net.URLEncoder.encode(value, "UTF-8");
+    }
+    private JSONObject cloudRequest(String method, String url, JSONObject payload, String token) throws Exception {
+        java.net.HttpURLConnection c = null;
+        try {
+            c = (java.net.HttpURLConnection)new java.net.URL(url).openConnection();
+            c.setRequestMethod(method);
+            c.setConnectTimeout(16000); c.setReadTimeout(22000);
+            c.setRequestProperty("Accept", "application/json");
+            if (token != null && !token.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + token);
+            if (payload != null) {
+                c.setDoOutput(true);
+                c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                byte[] bytes = payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                try(java.io.OutputStream out=c.getOutputStream()) {out.write(bytes);}
+            }
+            int code=c.getResponseCode();
+            java.io.InputStream stream=(code>=200&&code<300)?c.getInputStream():c.getErrorStream();
+            StringBuilder response=new StringBuilder();
+            if(stream!=null)try(java.io.InputStream in=stream;
+                java.io.BufferedReader reader=new java.io.BufferedReader(new java.io.InputStreamReader(in,java.nio.charset.StandardCharsets.UTF_8))){
+                char[] buffer=new char[4096];int count;
+                while((count=reader.read(buffer))!=-1){response.append(buffer,0,count);if(response.length()>4_000_000)throw new java.io.IOException("Firebase response too large");}
+            }
+            JSONObject result=response.length()==0?new JSONObject():new JSONObject(response.toString());
+            if(code<200||code>=300){
+                JSONObject err=result.optJSONObject("error");
+                String msg=err==null?result.toString():err.optString("message",err.toString());
+                throw new java.io.IOException("Firebase HTTP " + code + ": " + msg);
+            }
+            return result;
+        } finally {if(c!=null)c.disconnect();}
+    }
+    private void cloudSaveAuth(JSONObject credentials) {
+        cloudToken=credentials.optString("idToken");
+        cloudTokenUntil=System.currentTimeMillis() + 50L*60L*1000L;
+        String refresh=credentials.optString("refreshToken");
+        if(!refresh.isEmpty()) storage.edit().putString("grid_cloud_refresh", refresh).apply();
+        String uid=credentials.optString("localId");
+        if(!uid.isEmpty()) storage.edit().putString("grid_cloud_uid",uid).apply();
+    }
+    private String cloudAccessToken() throws Exception {
+        if(!cloudToken.isEmpty()&&System.currentTimeMillis()<cloudTokenUntil) return cloudToken;
+        String refresh=storage.getString("grid_cloud_refresh", "");
+        if(refresh.isEmpty())throw new java.io.IOException("Нет Firebase-сессии. Войди снова.");
+        java.net.HttpURLConnection c=null;
+        try{
+            String data="grant_type=refresh_token&refresh_token="+cloudUrl(refresh);
+            c=(java.net.HttpURLConnection)new java.net.URL("https://securetoken.googleapis.com/v1/token?key="+GRID_API_KEY).openConnection();
+            c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(16000);c.setReadTimeout(22000);
+            c.setRequestProperty("Content-Type","application/x-www-form-urlencoded");
+            try(java.io.OutputStream out=c.getOutputStream()){out.write(data.getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+            int code=c.getResponseCode();
+            java.io.InputStream stream=(code>=200&&code<300)?c.getInputStream():c.getErrorStream();
+            StringBuilder result=new StringBuilder();
+            if(stream!=null)try(java.io.BufferedReader r=new java.io.BufferedReader(new java.io.InputStreamReader(stream,java.nio.charset.StandardCharsets.UTF_8))){String line;while((line=r.readLine())!=null)result.append(line);}
+            if(code<200||code>=300)throw new java.io.IOException("Firebase refresh HTTP " + code + ". Требуется повторный вход.");
+            JSONObject j=new JSONObject(result.toString());
+            cloudToken=j.getString("id_token");cloudTokenUntil=System.currentTimeMillis()+50L*60L*1000L;
+            storage.edit().putString("grid_cloud_refresh",j.getString("refresh_token")).apply();
+            return cloudToken;
+        }finally{if(c!=null)c.disconnect();}
+    }
+    private JSONArray cloudFetchDocuments() throws Exception {
+        JSONArray all=new JSONArray();String page="";int pages=0;
+        do {
+            String url=GRID_DB_ROOT+"/tasks?pageSize=300"+(page.isEmpty()?"":"&pageToken="+cloudUrl(page));
+            JSONObject result=cloudRequest("GET",url,null,cloudAccessToken());
+            JSONArray docs=result.optJSONArray("documents");
+            if(docs!=null)for(int i=0;i<docs.length();i++)all.put(docs.getJSONObject(i));
+            page=result.optString("nextPageToken","");
+            if(++pages>50||all.length()>10000)throw new java.io.IOException("Too many Firestore documents");
+        }while(!page.isEmpty());
+        return all;
+    }
+    private String cloudDocId(JSONObject server) {
+        String path=server.optString("name","");return path.substring(path.lastIndexOf('/')+1);
+    }
+    private String cloudStringValue(JSONObject fields,String key) {
+        JSONObject v=fields.optJSONObject(key);
+        if(v==null)return "";
+        if(v.has("stringValue"))return v.optString("stringValue","");
+        if(v.has("integerValue"))return v.optString("integerValue","");
+        if(v.has("timestampValue"))return v.optString("timestampValue","");
+        return "";
+    }
+    private boolean cloudBooleanValue(JSONObject fields,String key) {
+        JSONObject v=fields.optJSONObject(key);
+        return v!=null&&v.optBoolean("booleanValue",false);
+    }
+    private JSONObject cloudFromDocument(JSONObject server) throws Exception {
+        JSONObject fields=server.optJSONObject("fields");if(fields==null)fields=new JSONObject();
+        JSONObject j=new JSONObject();j.put("cloudId",cloudDocId(server));
+        for(String key:new String[]{"turbine","name","description","date","worker","nc","updatedAt"})j.put(key,cloudStringValue(fields,key));
+        j.put("done",cloudBooleanValue(fields,"done"));
+        j.put("corrected",cloudBooleanValue(fields,"corrected"));
+        j.put("deleted",cloudBooleanValue(fields,"deleted"));
+        String completed=cloudStringValue(fields,"completedAt");
+        try{if(!completed.isEmpty())j.put("completedAt",java.time.Instant.parse(completed).toEpochMilli());}
+        catch(Exception ignored){}
+        j.put("photos",new JSONArray());
+        return j;
+    }
+    private JSONObject cloudScalar(Object value) throws Exception {
+        JSONObject out=new JSONObject();
+        if(value instanceof Boolean)out.put("booleanValue",value);
+        else out.put("stringValue",value==null?"":String.valueOf(value));
+        return out;
+    }
+    private String cloudNormalValue(JSONObject j,String key) {
+        if("done".equals(key)||"corrected".equals(key)||"deleted".equals(key))return String.valueOf(j.optBoolean(key,false));
+        if("completedAt".equals(key)){
+            Object o=j.opt(key);if(o instanceof Number){long millis=((Number)o).longValue();return millis>0?java.time.Instant.ofEpochMilli(millis).toString():"";}
+        }
+        return j.optString(key,"");
+    }
+    private JSONObject cloudBuildPending(String oldJson,JSONArray updated) throws Exception {
+        JSONArray pending=new JSONArray(storage.getString("grid_cloud_pending","[]"));
+        java.util.LinkedHashMap<String,JSONObject> queue=new java.util.LinkedHashMap<>();
+        for(int i=0;i<pending.length();i++){JSONObject a=pending.getJSONObject(i);queue.put(a.getString("id"),a);}
+        JSONObject meta=new JSONObject(storage.getString("grid_cloud_meta","{}"));
+        java.util.HashMap<String,JSONObject> before=new java.util.HashMap<>(),after=new java.util.HashMap<>();
+        JSONArray old=new JSONArray(oldJson);
+        for(int i=0;i<old.length();i++){
+            JSONObject j=old.getJSONObject(i);String id=j.optString("cloudId","");
+            if(!id.isEmpty())before.put(id,j);
+        }
+        for(int i=0;i<updated.length();i++){
+            JSONObject j=updated.getJSONObject(i);String id=j.optString("cloudId","");
+            if(!id.isEmpty())after.put(id,j);
+        }
+        String[] keys={"turbine","name","description","date","worker","nc","done","completedAt","corrected"};
+        java.util.LinkedHashSet<String> ids=new java.util.LinkedHashSet<>();ids.addAll(before.keySet());ids.addAll(after.keySet());
+        for(String id:ids){
+            JSONObject a=before.get(id),b=after.get(id);
+            JSONObject delta=new JSONObject();
+            if(b==null){delta.put("deleted",true);}
+            else{
+                if(a==null)delta.put("deleted",false);
+                for(String key:keys){
+                    String next=cloudNormalValue(b,key),prev=a==null?null:cloudNormalValue(a,key);
+                    if(prev==null||!prev.equals(next)){
+                        if("done".equals(key)||"corrected".equals(key))delta.put(key,b.optBoolean(key,false));
+                        else delta.put(key,next);
+                    }
+                }
+            }
+            if(delta.length()==0)continue;
+            delta.put("updatedAt",java.time.Instant.now().toString());
+            delta.put("updatedBy",storage.getString("grid_cloud_uid",""));
+            JSONObject item=queue.get(id);
+            if(item==null){item=new JSONObject();item.put("id",id);item.put("baseTime",meta.optString(id,""));item.put("changes",new JSONObject());queue.put(id,item);}
+            JSONObject changes=item.getJSONObject("changes");
+            java.util.Iterator<String> it=delta.keys();while(it.hasNext()){String key=it.next();changes.put(key,delta.get(key));}
+        }
+        JSONArray result=new JSONArray();for(JSONObject q:queue.values())result.put(q);
+        return new JSONObject().put("pending",result);
+    }
+    private void cloudAssignIds() throws Exception {
+        if(!cloudEnabled)return;
+        for(JSONObject job:jobs)if(job.optString("cloudId","").isEmpty())job.put("cloudId","grid_apk_"+java.util.UUID.randomUUID().toString().replace("-",""));
+    }
+    private String cloudCommitOne(JSONObject change) throws Exception {
+        String id=change.getString("id");
+        JSONObject fields=new JSONObject(),data=change.getJSONObject("changes");
+        java.util.Iterator<String> keys=data.keys();JSONArray paths=new JSONArray();
+        while(keys.hasNext()){String k=keys.next();fields.put(k,cloudScalar(data.get(k)));paths.put(k);}
+        JSONObject update=new JSONObject().put("name","projects/grid-30080/databases/default/documents/tasks/"+id).put("fields",fields);
+        JSONObject write=new JSONObject().put("update",update).put("updateMask",new JSONObject().put("fieldPaths",paths));
+        String base=change.optString("baseTime","");
+        write.put("currentDocument",base.isEmpty()?new JSONObject().put("exists",false):new JSONObject().put("updateTime",base));
+        JSONObject request=new JSONObject().put("writes",new JSONArray().put(write));
+        JSONObject result=cloudRequest("POST",GRID_DB_ROOT+":commit",request,cloudAccessToken());
+        JSONArray times=result.optJSONArray("writeResults");
+        return times!=null&&times.length()>0?times.getJSONObject(0).optString("updateTime",""):"";
+    }
+    private void cloudAcknowledge(JSONArray sent, java.util.Map<String,String> committed) {
+        try {
+            JSONArray current=new JSONArray(storage.getString("grid_cloud_pending","[]"));
+            JSONArray remaining=new JSONArray();
+            java.util.HashMap<String,String> originals=new java.util.HashMap<>();
+            for(int i=0;i<sent.length();i++){
+                JSONObject entry=sent.getJSONObject(i),id=entry.getString("id");
+                if(committed.containsKey(id))originals.put(id,entry.toString());
+            }
+            JSONObject meta=new JSONObject(storage.getString("grid_cloud_meta","{}"));
+            for(java.util.Map.Entry<String,String> e:committed.entrySet())
+                if(!e.getValue().isEmpty())meta.put(e.getKey(),e.getValue());
+            for(int i=0;i<current.length();i++){
+                JSONObject entry=current.getJSONObject(i);
+                String id=entry.getString("id"),prior=originals.get(id);
+                if(prior!=null&&prior.equals(entry.toString()))continue; // Successfully saved, unchanged in queue.
+                if(committed.containsKey(id)&&!committed.get(id).isEmpty()){
+                    // Another local edit happened during the upload. Rebase it on our successful write.
+                    entry.put("baseTime",committed.get(id));
+                }
+                remaining.put(entry);
+            }
+            storage.edit().putString("grid_cloud_pending",remaining.toString())
+                .putString("grid_cloud_meta",meta.toString()).commit();
+        }catch(Exception e){cloudState="Ошибка подтверждения записи: "+e.getMessage();}
+    }
+    private void cloudApplyDocuments(JSONArray remote, boolean firstConnection) {
+        try{
+            java.util.HashMap<String,JSONObject> local=new java.util.HashMap<>();
+            for(JSONObject j:jobs){String id=j.optString("cloudId","");if(!id.isEmpty())local.put(id,j);}
+            java.util.HashSet<String> queued=new java.util.HashSet<>();
+            JSONArray pending=new JSONArray(storage.getString("grid_cloud_pending","[]"));
+            for(int i=0;i<pending.length();i++)queued.add(pending.getJSONObject(i).optString("id"));
+            JSONObject meta=new JSONObject(storage.getString("grid_cloud_meta","{}"));
+            java.util.ArrayList<JSONObject> next=new java.util.ArrayList<>();
+            java.util.HashSet<String> seen=new java.util.HashSet<>();
+            for(int i=0;i<remote.length();i++){
+                JSONObject server=remote.getJSONObject(i);
+                String id=cloudDocId(server);seen.add(id);
+                if(!server.optString("updateTime","").isEmpty())meta.put(id,server.getString("updateTime"));
+                JSONObject previous=local.get(id),fresh=cloudFromDocument(server);
+                if(queued.contains(id)) {if(previous!=null)next.add(previous);continue;}
+                if(fresh.optBoolean("deleted",false))continue;
+                if(previous!=null){
+                    // Phone-only photo URIs are retained on THIS phone, never uploaded as fake web URLs.
+                    if(previous.has("photos"))fresh.put("photos",previous.get("photos"));
+                    if(previous.has("ncPhotos"))fresh.put("ncPhotos",previous.get("ncPhotos"));
+                    for(String key:new String[]{"completedBy","completedById","ncAt","ncBy"})
+                        if(previous.has(key))fresh.put(key,previous.get(key));
+                }
+                next.add(fresh);
+            }
+            for(JSONObject j:jobs){String id=j.optString("cloudId","");if(queued.contains(id)&&!seen.contains(id))next.add(j);}
+            next.sort((a,b)->{
+                int t=a.optString("turbine").compareToIgnoreCase(b.optString("turbine"));
+                return t!=0?t:a.optString("name").compareToIgnoreCase(b.optString("name"));
+            });
+            JSONArray array=new JSONArray();for(JSONObject j:next)array.put(j);
+            if(!storage.edit().putString("jobs",array.toString()).putString("grid_cloud_meta",meta.toString()).commit())
+                throw new java.io.IOException("Не удалось сохранить облачные данные локально");
+            jobs.clear();jobs.addAll(next);
+            cloudState="Firebase ✓ · "+next.size()+" работ";
+            if("home".equals(cloudUi))showHome();
+            else if("turbines".equals(cloudUi))showTurbines();
+            else if("jobs".equals(cloudUi))showJobs();
+            else if("turbine".equals(cloudUi)&&selectedTurbine!=null)showTurbineJobs(selectedTurbine);
+        }catch(Exception e){cloudState="Ошибка применения данных: "+e.getMessage();message(cloudState);}
+    }
+    private void cloudSyncNow(){
+        if(!cloudEnabled||cloudBusy)return;
+        cloudBusy=true;
+        final String snapshot=storage.getString("grid_cloud_pending","[]");
+        new Thread(()->{
+            java.util.LinkedHashMap<String,String> acknowledged=new java.util.LinkedHashMap<>();
+            JSONArray pending;
+            try{pending=new JSONArray(snapshot);}catch(Exception e){pending=new JSONArray();}
+            try{
+                for(int i=0;i<pending.length();i++){
+                    JSONObject change=pending.getJSONObject(i);
+                    acknowledged.put(change.getString("id"),cloudCommitOne(change));
+                }
+                JSONArray fresh=cloudFetchDocuments();
+                final JSONArray uploaded=pending;
+                runOnUiThread(()->{
+                    cloudAcknowledge(uploaded,acknowledged);
+                    cloudApplyDocuments(fresh,false);
+                    cloudBusy=false;
+                });
+            }catch(Exception error){
+                final JSONArray uploaded=pending;
+                runOnUiThread(()->{
+                    // Preserve successful earlier writes even if a later document fails.
+                    cloudAcknowledge(uploaded,acknowledged);
+                    cloudState="Firebase: "+error.getMessage();cloudBusy=false;
+                    android.util.Log.e("GRID-CLOUD","Sync failed",error);
+                });
+            }
+        },"GRID-cloud-sync").start();
+    }
+    private void cloudSettings(){
+        page(local("ОБЛАКО FIREBASE","FIREBASE CLOUD","FIREBASE CLOUD","FIREBASE MĀKONIS"),this::showHome);
+        layout.addView(text("GRID · grid-30080 · Firestore: default",16));
+        layout.addView(text(cloudState,16));
+        if(cloudEnabled){
+            button(local("Синхронизировать сейчас","Sync now","Jetzt synchronisieren","Sinhronizēt"),()->{cloudSyncNow();message("Firebase: проверяю изменения…");});
+            button(local("Отключить облако на этом телефоне","Disconnect cloud on this phone","Cloud trennen","Atvienot"),()->
+                new AlertDialog.Builder(this).setMessage("Отключить Firebase? Локальная копия останется на телефоне.")
+                    .setNegativeButton("Отмена",null).setPositiveButton("Отключить",(d,w)->{
+                        cloudEnabled=false;cloudStopTimer();cloudToken="";
+                        storage.edit().putBoolean("grid_cloud_enabled",false).remove("grid_cloud_refresh").remove("grid_cloud_uid").apply();
+                        cloudState="Отключено";cloudSettings();
+                    }).show());
+        }else{
+            layout.addView(text("Сначала на сайте GRID привяжи пароль к своему Google-аккаунту кнопкой «Пароль для APK». Затем войди здесь по тому же email.",16));
+            EditText email=field("Email Firebase",storage.getString("grid_cloud_email",""));
+            EditText password=field("Пароль GRID (не пароль Google)","");
+            password.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            button(local("ВОЙТИ И ПОДКЛЮЧИТЬ","SIGN IN AND CONNECT","ANMELDEN","PIESLĒGTIES"),()->{
+                String e=email.getText().toString().trim(),p=password.getText().toString();
+                if(e.isEmpty()||p.isEmpty()){message("Укажи email и пароль");return;}
+                cloudLogin(e,p);
+            });
+        }
+        layout.addView(text("Синхронизация каждые ~12 секунд, пока APK открыт. Фото остаются локальными; отдельная загрузка фото в облако ещё не реализована.",14));
+    }
+    private void cloudLogin(String email,String password){
+        if(cloudBusy)return;cloudBusy=true;cloudState="Проверяю Firebase…";
+        new Thread(()->{
+            try{
+                JSONObject request=new JSONObject().put("email",email).put("password",password).put("returnSecureToken",true);
+                JSONObject auth=cloudRequest("POST","https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key="+GRID_API_KEY,request,"");
+                cloudSaveAuth(auth);
+                JSONArray remote=cloudFetchDocuments();
+                runOnUiThread(()->{
+                    cloudBusy=false;
+                    new AlertDialog.Builder(this).setTitle("GRID · Firebase")
+                        .setMessage("В облаке найдено "+remote.length()+" записей. Перейти на облачную базу? Локальные данные будут сохранены в резервной копии внутри приложения. НЕ будет автоматической загрузки старых заданий поверх облачных.")
+                        .setNegativeButton("Отмена",(d,w)->{
+                            cloudToken="";cloudTokenUntil=0;
+                            storage.edit().remove("grid_cloud_refresh").remove("grid_cloud_uid").apply();
+                            cloudState="Облако не подключено";cloudSettings();
+                        })
+                        .setPositiveButton("Подключить",(d,w)->{
+                            try{
+                                String backup=storage.getString("jobs","[]");
+                                storage.edit().putString("grid_pre_cloud_backup_"+System.currentTimeMillis(),backup)
+                                    .putString("grid_cloud_email",email).putString("grid_cloud_pending","[]")
+                                    .putBoolean("grid_cloud_enabled",true).commit();
+                                cloudEnabled=true;
+                                cloudApplyDocuments(remote,true);cloudStartTimer();cloudSettings();
+                            }catch(Exception error){message("Firebase: "+error.getMessage());}
+                        }).show();
+                });
+            }catch(Exception error){runOnUiThread(()->{
+                cloudBusy=false;
+                cloudState="Ошибка входа: "+error.getMessage();
+                android.util.Log.e("GRID-CLOUD","Login failed",error);
+                cloudSettings();
+            });}
+        },"GRID-cloud-login").start();
     }
 
     private void loadJobs() {
