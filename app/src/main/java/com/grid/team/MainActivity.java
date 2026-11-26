@@ -837,6 +837,30 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == GRID_GOOGLE_SIGN_IN_REQUEST) {
+            try {
+                com.google.android.gms.auth.api.signin.GoogleSignInAccount account =
+                    com.google.android.gms.auth.api.signin.GoogleSignIn
+                        .getSignedInAccountFromIntent(data)
+                        .getResult(com.google.android.gms.common.api.ApiException.class);
+                String googleIdToken = account == null ? null : account.getIdToken();
+                if (googleIdToken == null || googleIdToken.isEmpty()) {
+                    cloudState = "Google не выдал ID token. Проверь Web client ID в Firebase.";
+                    cloudSettings();
+                } else {
+                    cloudGoogleExchangeToken(googleIdToken, account.getEmail());
+                }
+            } catch (com.google.android.gms.common.api.ApiException error) {
+                // 10 = DEVELOPER_ERROR: missing/wrong SHA-1, package name or Web Client ID.
+                cloudState = "Google Sign-In: код " + error.getStatusCode()
+                    + (error.getStatusCode() == 10 ? ". Проверь SHA-1 подписи APK в Firebase и Web client ID." : ". Попробуй ещё раз.");
+                cloudSettings();
+            } catch (Exception error) {
+                cloudState = "Google Sign-In: " + error.getMessage();
+                cloudSettings();
+            }
+            return;
+        }
         if (requestCode == EXPORT_JOBS_JSON) {
             if (resultCode == RESULT_OK && data != null && data.getData() != null) writeJobsJson(data.getData());
             return;
@@ -1361,6 +1385,63 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
 
     // GRID CLOUD v1: Firestore REST client (no extra Gradle dependencies).
     // Database ID is deliberately "default", NOT "(default)".
+    // GRID Cloud Google Sign-In: the Web OAuth client ID is set in res/values/grid_google_auth.xml.
+    private static final int GRID_GOOGLE_SIGN_IN_REQUEST = 9042;
+
+    private void cloudGoogleSignIn() {
+        if (cloudBusy) return;
+        String webClientId = getString(com.grid.team.R.string.grid_web_client_id).trim();
+        if (webClientId.isEmpty() || webClientId.startsWith("REPLACE_") ||
+                !webClientId.endsWith(".apps.googleusercontent.com")) {
+            new AlertDialog.Builder(this)
+                .setTitle("GRID · Google")
+                .setMessage("Сначала укажи действующий OAuth Web Client ID в файле app/src/main/res/values/grid_google_auth.xml. Также зарегистрируй SHA-1 ключа подписи APK в Firebase.")
+                .setPositiveButton("OK", null).show();
+            return;
+        }
+        try {
+            com.google.android.gms.auth.api.signin.GoogleSignInOptions options =
+                new com.google.android.gms.auth.api.signin.GoogleSignInOptions.Builder(
+                    com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN)
+                    .requestEmail()
+                    .requestIdToken(webClientId)
+                    .build();
+            com.google.android.gms.auth.api.signin.GoogleSignInClient client =
+                com.google.android.gms.auth.api.signin.GoogleSignIn.getClient(this, options);
+            startActivityForResult(client.getSignInIntent(), GRID_GOOGLE_SIGN_IN_REQUEST);
+        } catch (Exception error) {
+            cloudState = "Ошибка запуска Google: " + error.getMessage();
+            cloudSettings();
+        }
+    }
+
+    private void cloudGoogleExchangeToken(String googleIdToken, String email) {
+        if (cloudBusy) return;
+        cloudBusy = true;
+        cloudState = "Проверяю Google-аккаунт через Firebase…";
+        new Thread(() -> {
+            try {
+                JSONObject payload = new JSONObject()
+                    .put("requestUri", "http://localhost")
+                    .put("postBody", "id_token=" + cloudUrl(googleIdToken) + "&providerId=google.com")
+                    .put("returnSecureToken", true)
+                    .put("autoCreate", false); // Do not create a second unexpected account.
+                JSONObject auth = cloudRequest("POST",
+                    "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=" + GRID_API_KEY,
+                    payload, "");
+                cloudCompleteAuthenticated(auth, email == null ? "" : email);
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    cloudBusy = false;
+                    cloudState = "Google/Firebase: " + error.getMessage()
+                        + ". Если это 403, проверь UID в коллекции members.";
+                    android.util.Log.e("GRID-CLOUD", "Google sign in failed", error);
+                    cloudSettings();
+                });
+            }
+        }, "GRID-google-cloud-login").start();
+    }
+
     private static final String GRID_API_KEY = "AIzaSyCKUc3-52tQW8LC_plL07UYDqOoR4kkw0Q";
     private static final String GRID_DB_ROOT = "https://firestore.googleapis.com/v1/projects/grid-30080/databases/default/documents";
     private final android.os.Handler cloudHandler = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -1673,7 +1754,9 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
                         cloudState="Отключено";cloudSettings();
                     }).show());
         }else{
-            layout.addView(text("Сначала на сайте GRID привяжи пароль к своему Google-аккаунту кнопкой «Пароль для APK». Затем войди здесь по тому же email.",16));
+            layout.addView(text("Рекомендуемый вход — через Google, как на сайте GRID. Старый вход по паролю оставлен запасным.",16));
+            button(local("ВОЙТИ ЧЕРЕЗ GOOGLE", "SIGN IN WITH GOOGLE", "MIT GOOGLE ANMELDEN", "PIESLĒGTIES AR GOOGLE"), this::cloudGoogleSignIn);
+            layout.addView(text("Или войти через email и отдельный пароль GRID:",14));
             EditText email=field("Email Firebase",storage.getString("grid_cloud_email",""));
             EditText password=field("Пароль GRID (не пароль Google)","");
             password.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
@@ -1685,37 +1768,48 @@ toolbar.addView(weatherText, new LinearLayout.LayoutParams(dp(90), dp(48)));
         }
         layout.addView(text("Синхронизация каждые ~12 секунд, пока APK открыт. Фото остаются локальными; отдельная загрузка фото в облако ещё не реализована.",14));
     }
+    private void cloudCompleteAuthenticated(JSONObject auth, String email) throws Exception {
+        cloudSaveAuth(auth);
+        JSONArray remote=cloudFetchDocuments();
+        runOnUiThread(()->{
+            cloudBusy=false;
+            new AlertDialog.Builder(this).setTitle("GRID · Firebase")
+                .setMessage("В облаке найдено "+remote.length()+" записей. Перейти на облачную базу? Локальные данные будут сохранены в резервной копии внутри приложения. НЕ будет автоматической загрузки старых заданий поверх облачных.")
+                .setNegativeButton("Отмена",(d,w)->{
+                    cloudToken="";cloudTokenUntil=0;
+                    storage.edit().remove("grid_cloud_refresh").remove("grid_cloud_uid").apply();
+                    cloudState="Облако не подключено";cloudSettings();
+                })
+                .setPositiveButton("Подключить",(d,w)->{
+                    try{
+                        String backup=storage.getString("jobs","[]");
+                        storage.edit().putString("grid_pre_cloud_backup_"+System.currentTimeMillis(),backup)
+                            .putString("grid_cloud_email",email).putString("grid_cloud_pending","[]")
+                            .putBoolean("grid_cloud_enabled",true).commit();
+                        cloudEnabled=true;
+                        cloudApplyDocuments(remote,true);cloudStartTimer();cloudSettings();
+                    }catch(Exception error){message("Firebase: "+error.getMessage());}
+                }).show();
+        });
+    }
+
     private void cloudLogin(String email,String password){
         if(cloudBusy)return;cloudBusy=true;cloudState="Проверяю Firebase…";
         new Thread(()->{
+            final String[] verifiedUid = {""};
             try{
                 JSONObject request=new JSONObject().put("email",email).put("password",password).put("returnSecureToken",true);
                 JSONObject auth=cloudRequest("POST","https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key="+GRID_API_KEY,request,"");
-                cloudSaveAuth(auth);
-                JSONArray remote=cloudFetchDocuments();
-                runOnUiThread(()->{
-                    cloudBusy=false;
-                    new AlertDialog.Builder(this).setTitle("GRID · Firebase")
-                        .setMessage("В облаке найдено "+remote.length()+" записей. Перейти на облачную базу? Локальные данные будут сохранены в резервной копии внутри приложения. НЕ будет автоматической загрузки старых заданий поверх облачных.")
-                        .setNegativeButton("Отмена",(d,w)->{
-                            cloudToken="";cloudTokenUntil=0;
-                            storage.edit().remove("grid_cloud_refresh").remove("grid_cloud_uid").apply();
-                            cloudState="Облако не подключено";cloudSettings();
-                        })
-                        .setPositiveButton("Подключить",(d,w)->{
-                            try{
-                                String backup=storage.getString("jobs","[]");
-                                storage.edit().putString("grid_pre_cloud_backup_"+System.currentTimeMillis(),backup)
-                                    .putString("grid_cloud_email",email).putString("grid_cloud_pending","[]")
-                                    .putBoolean("grid_cloud_enabled",true).commit();
-                                cloudEnabled=true;
-                                cloudApplyDocuments(remote,true);cloudStartTimer();cloudSettings();
-                            }catch(Exception error){message("Firebase: "+error.getMessage());}
-                        }).show();
-                });
+                verifiedUid[0]=auth.optString("localId","");
+                cloudCompleteAuthenticated(auth, email);
             }catch(Exception error){runOnUiThread(()->{
                 cloudBusy=false;
-                cloudState="Ошибка входа: "+error.getMessage();
+                if(verifiedUid[0].isEmpty()){
+                    cloudState="Ошибка авторизации Firebase: "+error.getMessage();
+                }else{
+                    String uidPrefix=verifiedUid[0].substring(0,Math.min(16,verifiedUid[0].length()));
+                    cloudState="Пароль принят, но Firestore не разрешил чтение.\nUID APK начинается с: "+uidPrefix+"\nОшибка: "+error.getMessage();
+                }
                 android.util.Log.e("GRID-CLOUD","Login failed",error);
                 cloudSettings();
             });}
