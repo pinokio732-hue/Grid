@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1071203220625",
+    "project_id": "grid-30080",
+    "storage_bucket": "grid-30080.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1071203220625:android:384efc76d6f64184919330",
+        "android_client_info": {
+          "package_name": "com.grid.team"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1071203220625-pibv3n30fpdle07ssqngnf4aiprqa5vp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAb4eZKefZkCn1LNc37z4ZU4uN_ES4_JMg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1071203220625-pibv3n30fpdle07ssqngnf4aiprqa5vp.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
