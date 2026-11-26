@@ -71,12 +71,12 @@ GRID
 
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js';
-import {getAuth,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js';
+import {getAuth,GoogleAuthProvider,EmailAuthProvider,linkWithCredential,signInWithPopup,signInWithRedirect,getRedirectResult,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js';
 import {getFirestore,collection,doc,setDoc,updateDoc,getDocFromServer,onSnapshot} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
 const firebaseConfig={apiKey:'AIzaSyCKUc3-52tQW8LC_plL07UYDqOoR4kkw0Q',authDomain:'grid-30080.firebaseapp.com',projectId:'grid-30080',storageBucket:'grid-30080.firebasestorage.app',messagingSenderId:'1071203220625',appId:'1:1071203220625:web:1fe3328d166829f9919330'};
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app,'default');
 const screen=document.getElementById('screen');
-let jobs=[],user=null,unsubscribe=null,ready=false,view=()=>home(),lang=localStorage.getItem('gridLang')||'ru';
+let jobs=[],allJobs=[],user=null,unsubscribe=null,ready=false,view=()=>home(),lang=localStorage.getItem('gridLang')||'ru';
 let importing=false,importProgress='';
 const words={ru:['ТУРБИНЫ','РАБОТЫ','ДОБАВИТЬ РАБОТУ','ПРОБЛЕМЫ NC','ЯЗЫК','НАЗАД','СОХРАНИТЬ','Турбина','Название работы','Описание','ВЫПОЛНЕНО','УДАЛИТЬ','РЕДАКТИРОВАТЬ','ПОИСК'],en:['TURBINES','JOBS','ADD JOB','NC ISSUES','LANGUAGE','BACK','SAVE','Turbine','Job name','Description','COMPLETED','DELETE','EDIT','SEARCH'],de:['TURBINEN','ARBEITEN','ARBEIT HINZUFÜGEN','NC-PROBLEME','SPRACHE','ZURÜCK','SPEICHERN','Turbine','Arbeitsname','Beschreibung','ERLEDIGT','LÖSCHEN','BEARBEITEN','SUCHE'],lv:['TURBĪNAS','DARBI','PIEVIENOT DARBU','NC PROBLĒMAS','VALODA','ATPAKAĻ','SAGLABĀT','Turbīna','Darba nosaukums','Apraksts','PABEIGTS','DZĒST','LABOT','MEKLĒT']};
 const t=i=>words[lang][i],clear=()=>screen.replaceChildren();
@@ -100,13 +100,44 @@ function home(){
     btn('📥 Импорт JSON с Android (GRID)',importJson);
     btn('Импорт старых работ из этого браузера',importLocal);
   }
+  btn('🔑 Пароль для APK',()=>show(apkPassword));
+  btn('♻ Корзина',()=>show(cloudTrash));
   btn('Выйти',()=>signOut(auth));
-  text('GRID TEAM · Firebase (база default) · Импорт v3 · iPhone & Android');
+  text('GRID TEAM · Firebase default · APK Cloud v1 · Android & iPhone');
 }
 function turbines(){clear();back();[...new Set(jobs.map(j=>j.turbine))].forEach(n=>{const a=jobs.filter(j=>j.turbine===n);btn(n+' ('+a.filter(j=>j.done&&!j.nc).length+'/'+a.length+')',()=>show(()=>list(n)))})}
 function list(n=null,nc=false,q=''){clear();back();jobs.forEach(j=>{if(n!==null&&j.turbine!==n)return;if(nc&&!j.nc)return;if(q&&!(j.turbine+' '+j.name+' '+(j.description||'')).toLowerCase().includes(q.toLowerCase()))return;btn((j.done?'✓ ':'○ ')+j.turbine+' — '+j.name+(j.nc?' · NC: '+j.nc:''),()=>show(()=>details(j.id)),j.nc?'nc':j.done?'done':'')});btn('+ '+t(2),()=>show(()=>edit(null,n||'')))}
 function edit(id,n=''){clear();back();const j=jobs.find(x=>x.id===id)||{};const a=field(t(7),j.turbine||n),b=field(t(8),j.name),c=field('Дата',j.date||new Date().toISOString().slice(0,10),'date'),d=document.createElement('textarea');d.placeholder=t(9);d.value=j.description||'';screen.append(d);const worker=field('Исполнитель (1–3 буквы)',j.worker||'');btn(t(6),async()=>{if(!a.value.trim()||!b.value.trim()){alert('Заполни турбину и название');return}if(worker.value.trim().length>3){alert('Исполнитель: максимум 3 буквы');return}const ref=id?doc(db,'tasks',id):doc(collection(db,'tasks'));const item={turbine:a.value.trim(),name:b.value.trim(),date:c.value,description:d.value,worker:worker.value.trim(),done:!!j.done,nc:j.nc||'',completedAt:j.completedAt||'',updatedAt:new Date().toISOString(),updatedBy:user.uid};try{await setDoc(ref,item,{merge:true});show(()=>list())}catch(e){fail(e)}})}
-function details(id){const j=jobs.find(x=>x.id===id);if(!j){show(()=>list());return}clear();back();text(j.turbine+' — '+j.name);text(j.description||'');text('Дата: '+(j.date||'')+' · '+(j.worker||''));if(j.completedAt)text('Выполнено: '+new Date(j.completedAt).toLocaleString());if(j.nc)text('NC: '+j.nc);btn((j.done?'✓ ':'')+t(10),async()=>{const done=!j.done;try{await updateDoc(doc(db,'tasks',id),{done,nc:done?'':j.nc||'',completedAt:done?new Date().toISOString():'',updatedAt:new Date().toISOString(),updatedBy:user.uid})}catch(e){fail(e)}},'done');btn('NC',async()=>{const n=prompt('NC',j.nc||'');if(n===null)return;try{await updateDoc(doc(db,'tasks',id),{nc:n,done:n?false:!!j.done,completedAt:n?'':j.completedAt||'',updatedAt:new Date().toISOString(),updatedBy:user.uid})}catch(e){fail(e)}},'nc');btn(t(12),()=>show(()=>edit(id)));text('Удаление отключено правилами безопасности Firestore.')}
+function details(id){const j=jobs.find(x=>x.id===id);if(!j){show(()=>list());return}clear();back();text(j.turbine+' — '+j.name);text(j.description||'');text('Дата: '+(j.date||'')+' · '+(j.worker||''));if(j.completedAt)text('Выполнено: '+new Date(j.completedAt).toLocaleString());if(j.nc)text('NC: '+j.nc);btn((j.done?'✓ ':'')+t(10),async()=>{const done=!j.done;try{await updateDoc(doc(db,'tasks',id),{done,nc:done?'':j.nc||'',completedAt:done?new Date().toISOString():'',updatedAt:new Date().toISOString(),updatedBy:user.uid})}catch(e){fail(e)}},'done');btn('NC',async()=>{const n=prompt('NC',j.nc||'');if(n===null)return;try{await updateDoc(doc(db,'tasks',id),{nc:n,done:n?false:!!j.done,completedAt:n?'':j.completedAt||'',updatedAt:new Date().toISOString(),updatedBy:user.uid})}catch(e){fail(e)}},'nc');btn(t(12),()=>show(()=>edit(id)));btn('🗑 В корзину',async()=>{
+  if(!confirm('Удалить работу «'+j.name+'» в общую корзину?'))return;
+  try{await updateDoc(doc(db,'tasks',id),{deleted:true,deletedAt:new Date().toISOString(),deletedBy:user.uid,updatedAt:new Date().toISOString(),updatedBy:user.uid});show(()=>list())}catch(e){fail(e)}
+});}
+function apkPassword(){
+  clear();back();text('Привязка пароля к твоему Google-аккаунту GRID');
+  text('Этот пароль будет использоваться ТОЛЬКО для входа в APK; вход через Google на сайте останется. Не отправляй пароль в чат.');
+  if(!user||!user.email){text('Нет email Google-аккаунта');return;}
+  text('Email: '+user.email);
+  if(user.providerData.some(p=>p.providerId==='password')){text('Пароль для APK уже привязан. В APK войди с этим email и выбранным паролем.');return;}
+  const p=field('Придумай отдельный пароль GRID (не меньше 8 символов)','', 'password');
+  const q=field('Повтори пароль','', 'password');
+  btn('Привязать пароль к моему аккаунту',async()=>{
+    if(p.value.length<8){alert('Минимум 8 символов');return;}
+    if(p.value!==q.value){alert('Пароли не совпадают');return;}
+    try{
+      await linkWithCredential(user,EmailAuthProvider.credential(user.email,p.value));
+      p.value='';q.value='';alert('Готово! Теперь открой APK → FIREBASE и войди с этим email и паролем.');show(home);
+    }catch(e){console.error('APK auth link',e);alert('Привязка не удалась: '+(e.code||e.message)+'\nПри необходимости выйди и вновь войди через Google.')}
+  });
+}
+function cloudTrash(){
+  clear();back();text('КОРЗИНА GRID');
+  const removed=allJobs.filter(j=>j.deleted);
+  if(!removed.length){text('Корзина пуста');return;}
+  removed.forEach(j=>btn('♻ Восстановить: '+j.turbine+' — '+j.name,async()=>{
+    if(!confirm('Восстановить работу?'))return;
+    try{await updateDoc(doc(db,'tasks',j.id),{deleted:false,updatedAt:new Date().toISOString(),updatedBy:user.uid});show(cloudTrash)}catch(e){fail(e)}
+  }));
+}
 function search(){clear();back();const q=field(t(13),'');btn(t(13),()=>show(()=>list(null,false,q.value)))}
 function languages(){clear();back();[['ru','Русский'],['en','English'],['de','Deutsch'],['lv','Latviešu']].forEach(([l,n])=>btn(n,()=>{lang=l;localStorage.setItem('gridLang',l);document.documentElement.lang=l;show(home)}))}
 // One predictable ID per legacy record. Reimporting the same backup cannot overwrite edited cloud tasks.
@@ -232,7 +263,7 @@ async function importLocal(){
 }
 function weather(){const w=document.getElementById('weather');if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(async p=>{try{const a=p.coords.latitude.toFixed(3),b=p.coords.longitude.toFixed(3);const url='https://api.open-meteo.com/v1/forecast?latitude='+a+'&longitude='+b+'&current=temperature_2m,wind_speed_10m,wind_gusts_10m&wind_speed_unit=ms';const r=await fetch(url);if(!r.ok)throw Error();const d=(await r.json()).current;w.innerText=d.temperature_2m+' °C\n'+d.wind_speed_10m+' / '+d.wind_gusts_10m+' m/s'}catch(e){w.innerText='-- °C\n-- m/s'}},()=>{w.innerText='GPS —'},{timeout:15000})}
 getRedirectResult(auth).catch(fail);
-onAuthStateChanged(auth,u=>{if(unsubscribe){unsubscribe();unsubscribe=null}user=u;ready=false;if(!u){signedOut();return}clear();text('Подключение к Firestore…');unsubscribe=onSnapshot(collection(db,'tasks'),snapshot=>{jobs=snapshot.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.turbine||'').localeCompare(b.turbine||'')||(a.name||'').localeCompare(b.name||''));ready=true;show(view)},e=>{clear();text('Нет доступа к заданиям. Проверь, что UID этого Google-аккаунта добавлен в /members.');text('UID: '+u.uid);text('Ошибка: '+e.message);btn('Выйти',()=>signOut(auth))})});
+onAuthStateChanged(auth,u=>{if(unsubscribe){unsubscribe();unsubscribe=null}user=u;ready=false;if(!u){signedOut();return}clear();text('Подключение к Firestore…');unsubscribe=onSnapshot(collection(db,'tasks'),snapshot=>{allJobs=snapshot.docs.map(d=>({id:d.id,...d.data()}));jobs=allJobs.filter(j=>!j.deleted).sort((a,b)=>(a.turbine||'').localeCompare(b.turbine||'')||(a.name||'').localeCompare(b.name||''));ready=true;show(view)},e=>{clear();text('Нет доступа к заданиям. Проверь, что UID этого Google-аккаунта добавлен в /members.');text('UID: '+u.uid);text('Ошибка: '+e.message);btn('Выйти',()=>signOut(auth))})});
 document.documentElement.lang=lang;signedOut();weather();setInterval(weather,600000);
 </script>
 
