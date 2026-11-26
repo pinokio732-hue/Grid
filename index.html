@@ -72,11 +72,12 @@ GRID
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js';
 import {getAuth,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js';
-import {getFirestore,collection,doc,setDoc,updateDoc,onSnapshot,serverTimestamp} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
+import {getFirestore,collection,doc,setDoc,updateDoc,onSnapshot,runTransaction} from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
 const firebaseConfig={apiKey:'AIzaSyCKUc3-52tQW8LC_plL07UYDqOoR4kkw0Q',authDomain:'grid-30080.firebaseapp.com',projectId:'grid-30080',storageBucket:'grid-30080.firebasestorage.app',messagingSenderId:'1071203220625',appId:'1:1071203220625:web:1fe3328d166829f9919330'};
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
 const screen=document.getElementById('screen');
 let jobs=[],user=null,unsubscribe=null,ready=false,view=()=>home(),lang=localStorage.getItem('gridLang')||'ru';
+let importing=false,importProgress='';
 const words={ru:['ТУРБИНЫ','РАБОТЫ','ДОБАВИТЬ РАБОТУ','ПРОБЛЕМЫ NC','ЯЗЫК','НАЗАД','СОХРАНИТЬ','Турбина','Название работы','Описание','ВЫПОЛНЕНО','УДАЛИТЬ','РЕДАКТИРОВАТЬ','ПОИСК'],en:['TURBINES','JOBS','ADD JOB','NC ISSUES','LANGUAGE','BACK','SAVE','Turbine','Job name','Description','COMPLETED','DELETE','EDIT','SEARCH'],de:['TURBINEN','ARBEITEN','ARBEIT HINZUFÜGEN','NC-PROBLEME','SPRACHE','ZURÜCK','SPEICHERN','Turbine','Arbeitsname','Beschreibung','ERLEDIGT','LÖSCHEN','BEARBEITEN','SUCHE'],lv:['TURBĪNAS','DARBI','PIEVIENOT DARBU','NC PROBLĒMAS','VALODA','ATPAKAĻ','SAGLABĀT','Turbīna','Darba nosaukums','Apraksts','PABEIGTS','DZĒST','LABOT','MEKLĒT']};
 const t=i=>words[lang][i],clear=()=>screen.replaceChildren();
 function text(s){const p=document.createElement('p');p.textContent=s;screen.append(p);return p}
@@ -87,14 +88,133 @@ function show(fn){view=fn;fn()}
 function fail(e){console.error(e);alert('Firebase: '+(e.code||e.message||e))}
 async function login(){try{await signInWithPopup(auth,new GoogleAuthProvider())}catch(e){if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment'].includes(e.code))try{await signInWithRedirect(auth,new GoogleAuthProvider())}catch(err){fail(err)}else if(e.code!=='auth/popup-closed-by-user')fail(e)}}
 function signedOut(){clear();text('GRID TEAM');text('Войдите через Google. Доступ к заданиям разрешён только участникам, добавленным администратором в Firestore /members.');btn('Войти через Google',login);text('Ваши старые задания на этом устройстве пока не удалены.')}
-function home(){clear();text('TEAM WORK MANAGEMENT');text(user?.email||'');btn(t(0),()=>show(turbines));btn(t(1),()=>show(()=>list()));btn(t(13),()=>show(search));btn(t(2),()=>show(()=>edit(null)));text(t(10)+': '+jobs.filter(j=>j.done&&!j.nc).length+' / '+jobs.length);btn(t(3)+' ('+jobs.filter(j=>j.nc).length+')',()=>show(()=>list(null,true)),'nc');btn(t(4),()=>show(languages));btn('Импорт старых работ с этого устройства',importLocal);btn('Выйти',()=>signOut(auth));text('GRID TEAM · Firebase · iPhone & Android')}
+function home(){
+  clear();text('TEAM WORK MANAGEMENT');text(user?.email||'');
+  btn(t(0),()=>show(turbines));btn(t(1),()=>show(()=>list()));
+  btn(t(13),()=>show(search));btn(t(2),()=>show(()=>edit(null)));
+  text(t(10)+': '+jobs.filter(j=>j.done&&!j.nc).length+' / '+jobs.length);
+  btn(t(3)+' ('+jobs.filter(j=>j.nc).length+')',()=>show(()=>list(null,true)),'nc');
+  btn(t(4),()=>show(languages));
+  if(importing){text(importProgress);}
+  else {
+    btn('📥 Импорт JSON с Android (GRID)',importJson);
+    btn('Импорт старых работ из этого браузера',importLocal);
+  }
+  btn('Выйти',()=>signOut(auth));
+  text('GRID TEAM · Firebase · iPhone & Android');
+}
 function turbines(){clear();back();[...new Set(jobs.map(j=>j.turbine))].forEach(n=>{const a=jobs.filter(j=>j.turbine===n);btn(n+' ('+a.filter(j=>j.done&&!j.nc).length+'/'+a.length+')',()=>show(()=>list(n)))})}
 function list(n=null,nc=false,q=''){clear();back();jobs.forEach(j=>{if(n!==null&&j.turbine!==n)return;if(nc&&!j.nc)return;if(q&&!(j.turbine+' '+j.name+' '+(j.description||'')).toLowerCase().includes(q.toLowerCase()))return;btn((j.done?'✓ ':'○ ')+j.turbine+' — '+j.name+(j.nc?' · NC: '+j.nc:''),()=>show(()=>details(j.id)),j.nc?'nc':j.done?'done':'')});btn('+ '+t(2),()=>show(()=>edit(null,n||'')))}
 function edit(id,n=''){clear();back();const j=jobs.find(x=>x.id===id)||{};const a=field(t(7),j.turbine||n),b=field(t(8),j.name),c=field('Дата',j.date||new Date().toISOString().slice(0,10),'date'),d=document.createElement('textarea');d.placeholder=t(9);d.value=j.description||'';screen.append(d);const worker=field('Исполнитель (1–3 буквы)',j.worker||'');btn(t(6),async()=>{if(!a.value.trim()||!b.value.trim()){alert('Заполни турбину и название');return}if(worker.value.trim().length>3){alert('Исполнитель: максимум 3 буквы');return}const ref=id?doc(db,'tasks',id):doc(collection(db,'tasks'));const item={turbine:a.value.trim(),name:b.value.trim(),date:c.value,description:d.value,worker:worker.value.trim(),done:!!j.done,nc:j.nc||'',completedAt:j.completedAt||'',updatedAt:new Date().toISOString(),updatedBy:user.uid};try{await setDoc(ref,item,{merge:true});show(()=>list())}catch(e){fail(e)}})}
 function details(id){const j=jobs.find(x=>x.id===id);if(!j){show(()=>list());return}clear();back();text(j.turbine+' — '+j.name);text(j.description||'');text('Дата: '+(j.date||'')+' · '+(j.worker||''));if(j.completedAt)text('Выполнено: '+new Date(j.completedAt).toLocaleString());if(j.nc)text('NC: '+j.nc);btn((j.done?'✓ ':'')+t(10),async()=>{const done=!j.done;try{await updateDoc(doc(db,'tasks',id),{done,nc:done?'':j.nc||'',completedAt:done?new Date().toISOString():'',updatedAt:new Date().toISOString(),updatedBy:user.uid})}catch(e){fail(e)}},'done');btn('NC',async()=>{const n=prompt('NC',j.nc||'');if(n===null)return;try{await updateDoc(doc(db,'tasks',id),{nc:n,done:n?false:!!j.done,completedAt:n?'':j.completedAt||'',updatedAt:new Date().toISOString(),updatedBy:user.uid})}catch(e){fail(e)}},'nc');btn(t(12),()=>show(()=>edit(id)));text('Удаление отключено правилами безопасности Firestore.')}
 function search(){clear();back();const q=field(t(13),'');btn(t(13),()=>show(()=>list(null,false,q.value)))}
 function languages(){clear();back();[['ru','Русский'],['en','English'],['de','Deutsch'],['lv','Latviešu']].forEach(([l,n])=>btn(n,()=>{lang=l;localStorage.setItem('gridLang',l);document.documentElement.lang=l;show(home)}))}
-async function importLocal(){let old=[];try{old=JSON.parse(localStorage.getItem('gridJobs')||'[]')}catch(e){alert('Ошибка чтения старых работ');return}if(!Array.isArray(old)||!old.length){alert('На этом устройстве нет старых работ');return}if(!confirm('Импортировать '+old.length+' старых работ? Существующие задания в облаке останутся. Повторный импорт создаст дубликаты.'))return;let count=0;try{for(const j of old){const ref=doc(collection(db,'tasks'));await setDoc(ref,{turbine:String(j.turbine||''),name:String(j.name||''),description:String(j.description||''),date:String(j.date||''),worker:String(j.worker||''),done:!!j.done,nc:String(j.nc||''),completedAt:String(j.completedAt||''),updatedAt:new Date().toISOString(),updatedBy:user.uid});count++}alert('Импортировано: '+count+'. Локальная копия сохранена.')}catch(e){alert('Импортировано '+count+' из '+old.length);fail(e)}}
+// One predictable ID per legacy record. Reimporting the same backup cannot overwrite edited cloud tasks.
+const clean = v => String(v ?? '').trim();
+const taskKey = j => JSON.stringify([clean(j.turbine),clean(j.name),clean(j.description),clean(j.date),clean(j.worker)]);
+function dataForCloud(j){
+  return {
+    turbine:clean(j.turbine),name:clean(j.name),description:clean(j.description),
+    date:clean(j.date),worker:clean(j.worker),done:!!j.done,
+    nc:typeof j.nc==='string'?j.nc:(j.nc?'NC':''),
+    completedAt:clean(j.completedAt),corrected:!!j.corrected,photos:[],
+    updatedAt:new Date().toISOString(),updatedBy:user.uid,
+    importedFrom:'GRID Android/JSON'
+  };
+}
+async function hashId(value){
+  const bytes=new TextEncoder().encode(value);
+  const hash=await crypto.subtle.digest('SHA-256',bytes);
+  return 'grid_import_'+Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function prepareImport(raw){
+  if(!Array.isArray(raw)||!raw.length)throw new Error('В JSON нет массива заданий.');
+  if(raw.length>5000)throw new Error('Слишком много заданий: максимум 5000 за один импорт.');
+  if(raw.some(x=>!x||typeof x!=='object'||Array.isArray(x)||!clean(x.turbine)||!clean(x.name)))
+    throw new Error('У одного из заданий нет названия работы или турбины.');
+  if(raw.some(x=>Array.isArray(x.photos)&&x.photos.length>0))
+    throw new Error('В файле есть фотографии. Для них нужен отдельный перенос в Firebase Storage; импорт остановлен без потери данных.');
+  const occurrences=new Map(), prepared=[];
+  for(const j of raw){
+    const key=taskKey(j),ordinal=occurrences.get(key)||0;
+    occurrences.set(key,ordinal+1);
+    prepared.push({id:await hashId('GRID-v1|'+key+'|'+ordinal),key,item:j});
+  }
+  return prepared;
+}
+async function importJobsFromArray(raw,source){
+  if(importing)return;
+  if(!user||!ready){alert('Сначала войди в GRID и дождись подключения к Firebase.');return;}
+  try{
+    const prepared=await prepareImport(raw);
+    // Count matched records; do not clobber cloud tasks already created or subsequently edited.
+    const knownIds=new Set(jobs.map(j=>j.id));
+    const existingCounts=new Map();
+    for(const j of jobs){const k=taskKey(j);existingCounts.set(k,(existingCounts.get(k)||0)+1);}
+    const pending=[];let skipped=0;
+    for(const record of prepared){
+      const existing=existingCounts.get(record.key)||0;
+      if(knownIds.has(record.id)||existing>0){
+        skipped++;if(existing>0)existingCounts.set(record.key,existing-1);
+      }else pending.push(record);
+    }
+    const counts=new Map();
+    for(const j of raw)counts.set(clean(j.turbine),(counts.get(clean(j.turbine))||0)+1);
+    const turbines=Array.from(counts,([name,count])=>name+': '+count).join(', ');
+    const question='Файл: '+source+'\\nНайдено: '+prepared.length+' работ\\n'+turbines+
+      '\\nНовых к загрузке: '+pending.length+'\\nУже в облаке: '+skipped+
+      '\\n\\nОблачные задания не удаляются и не перезаписываются. Запустить импорт?';
+    if(!confirm(question.replaceAll('\\n','\n')))return;
+    if(!pending.length){alert('Все '+prepared.length+' заданий уже есть в Firebase. Дубликатов не создано.');return;}
+    importing=true;let added=0,already=skipped;
+    try{
+      for(let i=0;i<pending.length;i+=35){
+        if(!user)throw new Error('Выход из аккаунта во время импорта.');
+        const chunk=pending.slice(i,i+35);
+        importProgress='Загрузка в Firebase: '+(i+1)+'–'+Math.min(i+35,pending.length)+' из '+pending.length;
+        if(view)show(home);
+        // Transaction only creates missing IDs. A retry never resets a completed job.
+        const result=await runTransaction(db,async tx=>{
+          const snapshots=await Promise.all(chunk.map(e=>tx.get(doc(db,'tasks',e.id))));
+          let created=0;
+          chunk.forEach((e,index)=>{
+            if(!snapshots[index].exists()){
+              tx.set(doc(db,'tasks',e.id),dataForCloud(e.item));created++;
+            }
+          });
+          return created;
+        });
+        added+=result;already+=chunk.length-result;
+      }
+      alert('Готово! Загружено: '+added+'. Уже были в Firebase: '+already+'. Всего в файле: '+prepared.length+'.');
+    }catch(e){
+      console.error(e);
+      alert('Импорт остановился. Подтверждено новых: '+added+'. '+(e.code||e.message||e)+'\\nМожно повторить импорт: существующие работы не перезапишутся.');
+    }finally{
+      importing=false;importProgress='';show(home);
+    }
+  }catch(e){console.error(e);alert('Импорт JSON: '+(e.message||e));}
+}
+function importJson(){
+  const picker=document.createElement('input');picker.type='file';picker.accept='.json,application/json';
+  picker.style.display='none';document.body.append(picker);
+  picker.onchange=async()=>{
+    try{
+      const file=picker.files&&picker.files[0];if(!file)return;
+      if(file.size>10*1024*1024)throw new Error('JSON слишком большой (более 10 МБ).');
+      const parsed=JSON.parse(await file.text());
+      await importJobsFromArray(Array.isArray(parsed)?parsed:parsed.jobs,file.name);
+    }catch(e){console.error(e);alert('Не удалось прочитать JSON: '+(e.message||e));}
+    finally{picker.remove();}
+  };
+  picker.click();
+}
+async function importLocal(){
+  let old=[];
+  try{old=JSON.parse(localStorage.getItem('gridJobs')||'[]');}
+  catch(e){alert('Ошибка чтения старых работ из браузера.');return;}
+  await importJobsFromArray(old,'Задания этого браузера');
+}
 function weather(){const w=document.getElementById('weather');if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(async p=>{try{const a=p.coords.latitude.toFixed(3),b=p.coords.longitude.toFixed(3);const url='https://api.open-meteo.com/v1/forecast?latitude='+a+'&longitude='+b+'&current=temperature_2m,wind_speed_10m,wind_gusts_10m&wind_speed_unit=ms';const r=await fetch(url);if(!r.ok)throw Error();const d=(await r.json()).current;w.innerText=d.temperature_2m+' °C\n'+d.wind_speed_10m+' / '+d.wind_gusts_10m+' m/s'}catch(e){w.innerText='-- °C\n-- m/s'}},()=>{w.innerText='GPS —'},{timeout:15000})}
 getRedirectResult(auth).catch(fail);
 onAuthStateChanged(auth,u=>{if(unsubscribe){unsubscribe();unsubscribe=null}user=u;ready=false;if(!u){signedOut();return}clear();text('Подключение к Firestore…');unsubscribe=onSnapshot(collection(db,'tasks'),snapshot=>{jobs=snapshot.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.turbine||'').localeCompare(b.turbine||'')||(a.name||'').localeCompare(b.name||''));ready=true;show(view)},e=>{clear();text('Нет доступа к заданиям. Проверь, что UID этого Google-аккаунта добавлен в /members.');text('UID: '+u.uid);text('Ошибка: '+e.message);btn('Выйти',()=>signOut(auth))})});
